@@ -34,6 +34,19 @@ is used to make real feeding decisions.
   **After real numbers land:** add value-specific tests (e.g. "19-month median-weight girl →
   these dinner targets"). Code is already isolated in `nutrition/reference.py`; 90 tests in place.
 
+## 📅 Scheduled — tomorrow
+
+- [ ] **Test & improve LLM assistance for exception cases** (the collapsed "more options" chat).
+      Exercise free-text requests: "avoid broccoli", "use up the broccoli", "make it dairy-free",
+      "something lighter", etc., and judge quality (a quick test on the current page felt
+      unsatisfying).
+      Known gaps to address:
+      - The `/chat` path returns **plain text** (`recipe_text`), not a **recipe card** — make the
+        exception flow render a card like the buttons do (consistent UX).
+      - Verify the router reliably extracts params (`exclude`, `fresh`, `date`) and that
+        `another_idea(exclude=...)` actually honours them in the generated recipe.
+      - Consider surfacing *why* (e.g. "avoiding broccoli") and allowing follow-ups.
+
 ## Roadmap (from DESIGN.md)
 
 - [x] #1 — Nutrition tables + weight/age portion scaling (logic done; **data is placeholder — see CRITICAL above**)
