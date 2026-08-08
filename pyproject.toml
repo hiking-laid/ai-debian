@@ -1,0 +1,48 @@
+[project]
+name = "toddler-dinner-planner"
+version = "0.1.0"
+description = "Personal tool to plan age-appropriate toddler dinners and shopping lists"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "pydantic>=2.6",
+    "pydantic-settings>=2.2",
+    "pyyaml>=6.0",
+    "typer>=0.12",
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "sqlalchemy>=2.0",
+    "psycopg[binary]>=3.1",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "tzdata>=2024.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.4",
+    "mypy>=1.9",
+]
+# Future: supermarket integration (see DESIGN.md §10). Not required for v1.
+supermarket = [
+    "playwright>=1.43",
+]
+
+[project.scripts]
+toddler-dinner = "toddler_dinner.cli:app"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/toddler_dinner"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]

@@ -1,0 +1,20 @@
+# Household profile (human-edited). Secrets (Postgres DSN, LLM provider) live in .env, not here.
+child:
+  name: "child"
+  birthdate: "2024-01-15"   # age is derived from this, so targets drift as they grow
+  sex: "female"             # used for WHO weight-for-age median (portion scaling)
+  weight_kg: 11.0
+  activity_level: "moderate"  # low | moderate | high
+
+household:
+  location: "New Zealand"
+  timezone: "Pacific/Auckland"   # IANA tz name — drives "today"/"tonight" and date windows
+
+exclusions:
+  allergies: []   # HARD — never appears (e.g. "egg", "peanut")
+  dietary: []     # HARD — cultural/religious/vegetarian rules
+  dislikes: []    # SOFT — down-ranked, not banned
+
+dinner_daily_fraction: 0.33  # dinner targets ~1/3 of daily nutrition needs
+variety_days: 5              # avoid repeating a dinner served within this many days
+history_days: 5             # how many days of cooked dinners to show in the history view

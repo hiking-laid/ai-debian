@@ -1,0 +1,33 @@
+# Keep the Docker build context small and free of secrets/junk.
+
+# Python caches / builds
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Virtualenvs
+.venv/
+venv/
+
+# VCS & tooling
+.git/
+.gitignore
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Secrets & local runtime data (provided at runtime via env_file / volumes)
+.env
+config/profile.yaml
+data/inventory.yaml
+data/exports/
+
+# Tests aren't needed in the runtime image
+tests/
+
+# Editor/OS cruft
+.vscode/
+.idea/
+.DS_Store

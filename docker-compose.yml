@@ -1,0 +1,18 @@
+# Single app service. Postgres is EXTERNAL on the NAS — not managed here.
+services:
+  app:
+    build: .
+    ports:
+      - "${TDP_WEB_PORT:-8080}:8080"
+    env_file:
+      - .env
+    volumes:
+      # Edit config + inventory on the host without rebuilding the image.
+      - ./config:/app/config
+      - ./data:/app/data
+      # Persist the GitHub Copilot device-flow token across restarts (home dir of root).
+      - copilot-auth:/root/.toddler_dinner
+    restart: unless-stopped
+
+volumes:
+  copilot-auth:
