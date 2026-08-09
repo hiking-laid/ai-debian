@@ -13,7 +13,6 @@ from pydantic import BaseModel
 
 from toddler_dinner.app import build_planner
 from toddler_dinner.core import Planner
-from toddler_dinner.export import recipe_text
 from toddler_dinner.models import Recipe
 from toddler_dinner.routing import Action, route
 
@@ -29,19 +28,8 @@ def get_planner() -> Planner:
     return build_planner()
 
 
-# Last generated-but-unsaved suggestion (single-user tool). Lets the chat approve-and-save,
-# giving web parity with the CLI's confirm prompt without auto-approving.
-_pending: dict[str, Recipe] = {}
-_SAVE_TRIGGERS = {"save", "save it", "yes", "yes please", "approve", "keep", "keep it"}
-
-
 class ChatRequest(BaseModel):
     message: str
-
-
-class ChatResponse(BaseModel):
-    reply: str
-    action: str | None = None
 
 
 @app.get("/")
@@ -49,55 +37,11 @@ def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
 
 
-def _suggest_and_stash(planner: Planner, exclude: list[str] | None = None) -> str:
-    recipe = planner.another_idea(exclude=exclude)
-    _pending["last"] = recipe
-    return recipe_text(recipe) + "\n\nReply 'save' to add it to your cookbook."
-
-
-@app.post("/chat", response_model=ChatResponse)
-def chat(req: ChatRequest, planner: Planner = Depends(get_planner)) -> ChatResponse:
-    msg = req.message.strip()
-
-    # 1. Approve + save a pending suggestion if the user confirms.
-    if _pending.get("last") and msg.lower() in _SAVE_TRIGGERS:
-        recipe = _pending.pop("last")
-        planner.persist_approved(recipe)
-        return ChatResponse(reply=f"Saved '{recipe.title}' to your cookbook.")
-
-    decision = route(msg, llm=planner.llm)
-    try:
-        if decision.action == Action.TONIGHT:
-            r = planner.tonight()
-            if r.recipe:
-                detail = recipe_text(r.recipe)
-                if r.kind == "partial" and r.missing:
-                    detail += f"\n\n(You're missing: {', '.join(r.missing)})"
-                return ChatResponse(reply=detail, action=Action.TONIGHT.value)
-            # Cold start / no DB match: generate an idea straight from the fridge.
-            reply = _suggest_and_stash(planner)
-            return ChatResponse(
-                reply="Your cookbook has no match yet — here's a fresh idea:\n\n" + reply,
-                action=Action.TONIGHT.value,
-            )
-        if decision.action == Action.ANOTHER_IDEA:
-            reply = _suggest_and_stash(planner, exclude=decision.params.get("exclude"))
-            return ChatResponse(reply=reply, action=Action.ANOTHER_IDEA.value)
-        if decision.action == Action.PLAN_TOMORROW:
-            plan = planner.plan_tomorrow(use_llm=decision.params.get("fresh", True))
-            recipe = plan.menu.items[0].recipe
-            goods = ", ".join(f"{g.name} ({g.quantity:g}{g.unit})" for g in plan.groceries.items)
-            reply = (
-                f"Dinner for {plan.menu.for_date}:\n\n"
-                + recipe_text(recipe)
-                + f"\n\nGroceries to buy: {goods or 'nothing, all in the fridge'}"
-            )
-            return ChatResponse(reply=reply, action=Action.PLAN_TOMORROW.value)
-    except Exception as e:  # noqa: BLE001 - never surface a 500 to the chat box
-        action = decision.action.value if decision.action else None
-        return ChatResponse(reply=f"Sorry, that didn't work: {e}", action=action)
-
-    return ChatResponse(reply="Sorry, I didn't understand that.", action=None)
+def _note_from_params(params: dict) -> str | None:
+    """Human-readable 'why' note for the card (e.g. what we're avoiding)."""
+    if params.get("exclude"):
+        return "Avoiding " + ", ".join(params["exclude"])
+    return None
 
 
 # --- Structured JSON API (for the card/button UI) ---------------------------
@@ -183,5 +127,35 @@ def api_history(days: int | None = None, planner: Planner = Depends(get_planner)
     """Recent cooked dinners (full recipes) for the history view."""
     try:
         return {"entries": planner.recent_cooked(days)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+@app.post("/api/chat")
+def api_chat(req: ChatRequest, planner: Planner = Depends(get_planner)) -> dict:
+    """Free-text 'exceptions' box: route the message, then return a **card payload** (not text),
+    so the UI renders it like a button result. Honours extracted params (e.g. `exclude`).
+    """
+    decision = route(req.message.strip(), llm=planner.llm)
+    if decision.action is None:
+        return {"message": "Sorry, I didn't catch that — try “avoid broccoli”, "
+                           "“make it dairy-free”, or “plan tomorrow”."}
+    params = decision.params or {}
+    exclude = params.get("exclude")
+    note = _note_from_params(params)
+    try:
+        if decision.action == Action.PLAN_TOMORROW:
+            payload = _plan_payload(planner.plan_tomorrow(use_llm=params.get("fresh", True)))
+            if note:
+                payload["note"] = note
+            return payload
+        if decision.action == Action.TONIGHT and not exclude:
+            r = planner.tonight()
+            if r.recipe:
+                return {"recipe": r.recipe, "source": "cookbook", "kind": r.kind,
+                        "missing": r.missing}
+            return {"recipe": planner.another_idea(), "source": "fresh"}
+        # another_idea, or a tonight request that carries an exclusion -> generate
+        return {"recipe": planner.another_idea(exclude=exclude), "source": "fresh", "note": note}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}

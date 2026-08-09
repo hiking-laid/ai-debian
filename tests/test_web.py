@@ -1,5 +1,5 @@
 """Web server tests via FastAPI TestClient. get_planner is overridden with a fake in-memory
-planner (no DB / LLM / network). _pending is cleared between tests.
+planner (no DB / LLM / network). The chat endpoint (/api/chat) returns structured card payloads.
 """
 
 from __future__ import annotations
@@ -35,7 +35,7 @@ class _Inv:
 
 
 class _LLM:
-    """Fake LLM: routes everything to the given action, generates a fixed recipe."""
+    """Fake LLM: routes to the given action/params (for the router), generates a fixed recipe."""
 
     def __init__(self, action="another_idea", params=None, fail=False):
         import json
@@ -60,10 +60,8 @@ def _make_planner(llm) -> Planner:
 
 
 @pytest.fixture(autouse=True)
-def _clear_pending():
-    server._pending.clear()
+def _clear_overrides():
     yield
-    server._pending.clear()
     server.app.dependency_overrides.clear()
 
 
@@ -72,61 +70,48 @@ def _client(planner) -> TestClient:
     return TestClient(server.app)
 
 
-def _say(client, msg):
-    return client.post("/chat", json={"message": msg}).json()["reply"]
+def _chat(client, msg) -> dict:
+    return client.post("/api/chat", json={"message": msg}).json()
 
 
 def test_index_served():
-    planner = _make_planner(_LLM())
-    client = _client(planner)
-    assert client.get("/").status_code == 200
+    assert _client(_make_planner(_LLM())).get("/").status_code == 200
 
 
-def test_tonight_exact_match():
+def test_chat_exclude_returns_card_with_note():
+    # "skip the broccoli" has no fast-path keyword -> LLM router -> another_idea + exclude.
+    planner = _make_planner(_LLM(action="another_idea", params={"exclude": ["broccoli"]}))
+    d = _chat(_client(planner), "please skip the broccoli")
+    assert d["source"] == "fresh"
+    assert d["recipe"]["title"] == "Fresh Bowl"     # rendered as a card, not text
+    assert d["note"] == "Avoiding broccoli"          # the 'why' note
+
+
+def test_chat_tonight_matches_cookbook_card():
     planner = _make_planner(_LLM())
     planner.recipes.add_recipe(_clean_recipe("Chicken Rice"))
-    reply = _say(_client(planner), "what's for dinner tonight?")
-    assert "Chicken Rice" in reply
+    d = _chat(_client(planner), "what's for dinner tonight?")   # fast-path tonight
+    assert d["source"] == "cookbook"
+    assert d["recipe"]["title"] == "Chicken Rice"
 
 
-def test_tonight_cold_start_generates_idea():
-    # Empty cookbook: tonight should generate an idea directly (with steps), not punt.
-    planner = _make_planner(_LLM(action="tonight"))
-    reply = _say(_client(planner), "what's for dinner tonight?")
-    assert "Fresh Bowl" in reply
-    assert "Steps:" in reply  # full recipe detail, not just a title
-    assert "fresh idea" in reply.lower()
+def test_chat_plan_returns_plan_card():
+    planner = _make_planner(_LLM())
+    d = _chat(_client(planner), "plan tomorrow's dinner")       # fast-path plan
+    assert d["source"] == "plan"
+    assert d["recipe"]["title"] == "Fresh Bowl"
+    assert "for_date" in d and "groceries" in d
 
 
-def test_another_idea_suggests_and_can_be_saved():
-    planner = _make_planner(_LLM(action="another_idea"))
-    client = _client(planner)
-    reply = _say(client, "give me something else, she's bored")
-    assert "Fresh Bowl" in reply and "save" in reply.lower()
-    assert planner.recipes.approved_recipes() == []  # not saved yet (approval gate)
-
-    saved = _say(client, "save")
-    assert "Saved 'Fresh Bowl'" in saved
-    assert [r.title for r in planner.recipes.approved_recipes()] == ["Fresh Bowl"]
+def test_chat_unrecognized_returns_message():
+    planner = _make_planner(_LLM(action="make_coffee"))         # unknown -> unmatched
+    d = _chat(_client(planner), "tell me a joke")
+    assert "recipe" not in d
+    assert "didn't catch" in d["message"].lower()
 
 
-def test_plan_tomorrow_reply():
-    planner = _make_planner(_LLM(action="plan_tomorrow"))
-    planner.recipes.add_recipe(_clean_recipe("Chicken Rice"))
-    reply = _say(_client(planner), "plan tomorrow's dinner")
-    assert "Chicken Rice" in reply
-
-
-def test_errors_are_caught_not_500():
-    # LLM generation raises -> friendly reply, HTTP 200 (not a 500)
+def test_chat_errors_caught_not_500():
     planner = _make_planner(_LLM(action="another_idea", fail=True))
-    client = _client(planner)
-    resp = client.post("/chat", json={"message": "another idea please"})
+    resp = _client(planner).post("/api/chat", json={"message": "skip the broccoli"})
     assert resp.status_code == 200
-    assert "didn't work" in resp.json()["reply"]
-
-
-def test_unrecognized_message():
-    planner = _make_planner(_LLM(action="make_coffee"))  # unknown -> unmatched
-    reply = _say(_client(planner), "tell me a joke")
-    assert "didn't understand" in reply.lower()
+    assert "error" in resp.json()

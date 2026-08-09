@@ -62,7 +62,6 @@
     .chatrow input{ flex:1; padding:.6rem .2rem; border:none; border-bottom:1px solid var(--ink); background:transparent; font-family:'Cormorant Garamond',serif; font-size:1.15rem; color:var(--ink); }
     .chatrow input:focus{ outline:none; border-color:var(--bronze); }
     .chatrow button{ font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.13em; font-size:.64rem; padding:.55rem 1.1rem; border:1px solid var(--ink); background:transparent; cursor:pointer; }
-    #chatreply{ font-family:'Cormorant Garamond',serif; font-size:1.05rem; white-space:pre-wrap; margin-top:1rem; color:var(--ink); }
 
     #toast{ position:fixed; bottom:1.6rem; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:.75rem 1.3rem; font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; opacity:0; transition:opacity .2s; pointer-events:none; }
     #toast.show{ opacity:.97; }
@@ -99,7 +98,6 @@
              onkeydown="if(event.key==='Enter')sendChat()" />
       <button onclick="sendChat()">Send</button>
     </div>
-    <div id="chatreply"></div>
   </details>
 
   <div id="toast"></div>
@@ -161,12 +159,15 @@ function render(d){
   current = d.recipe;
   const isPlan = d.source==='plan';
   let header='';
+  const lines=[];
+  if(d.note) lines.push(esc(d.note));
   if(isPlan){
     const buy = (d.groceries||[]).map(g=>g.name);
-    header = `<p class="empty">For ${esc(d.for_date)} · to buy: <b>${buy.length?esc(buy.join(', ')):'nothing — all in the fridge'}</b></p>`;
+    lines.push(`For ${esc(d.for_date)} · to buy: <b>${buy.length?esc(buy.join(', ')):'nothing — all in the fridge'}</b>`);
   } else if(d.source==='cookbook' && d.kind==='partial' && (d.missing||[]).length){
-    header = `<p class="empty">From your cookbook · you're missing: <b>${esc(d.missing.join(', '))}</b></p>`;
+    lines.push(`From your cookbook · you're missing: <b>${esc(d.missing.join(', '))}</b>`);
   }
+  header = lines.map(l=>`<p class="empty">${l}</p>`).join('');
   const btns = isPlan
     ? `<button onclick="save()">Save to Cookbook</button><button onclick="anotherIdea()">Another</button>`
     : `<button class="primary" onclick="cooked()">Cooked It</button><button onclick="save()">Save to Cookbook</button><button onclick="anotherIdea()">Another</button>`;
@@ -225,12 +226,21 @@ async function cookAgain(i){
 }
 
 // ---- chat (exceptions) -----------------------------------------------------
+function showInfo(msg){ document.getElementById('suggestion').innerHTML = `<p class="empty">${esc(msg)}</p>`; }
+
 async function sendChat(){
   const el=document.getElementById('chat'); const v=el.value.trim(); if(!v) return;
   el.value='';
-  document.getElementById('chatreply').textContent='…';
-  const d = await api('/chat', {message:v});
-  document.getElementById('chatreply').textContent = d.reply || d.error || '';
+  setBusy(true);
+  document.getElementById('suggestion').scrollIntoView({behavior:'smooth', block:'start'});
+  const d = await api('/api/chat', {message:v});
+  if(d.message){
+    document.querySelectorAll('.actions button').forEach(b=>b.disabled=false);
+    showInfo(d.message);
+    return;
+  }
+  render(d);
+  mode = (d.source==='plan') ? 'plan' : 'tonight';
 }
 
 loadHistory();
