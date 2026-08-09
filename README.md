@@ -23,9 +23,14 @@ The app is at `http://localhost:${TDP_WEB_PORT:-8080}`. `config/` and `data/` ar
 so edit them on the host without rebuilding. Postgres is external (e.g. your NAS) via
 `TDP_POSTGRES_DSN`.
 
-> **GitHub Copilot only:** authorize once via device flow. Run it in the container so the token
-> is written to the mounted home volume:
-> `docker compose run --rm app toddler-dinner login-copilot`
+> **LLM credential (one-time).** The app **serves, migrates, and shows history** without an LLM,
+> but recipe *generation* (tonight / another idea / plan) needs a provider. Pick one:
+>
+> - **GitHub Copilot** — authorize once via device flow; the `copilot-auth` volume starts empty,
+>   so run it in the container to write the token there:
+>   `docker compose run --rm app toddler-dinner login-copilot`
+> - **OpenAI / Anthropic** — set `TDP_LLM_PROVIDER=openai` (or `anthropic`) and `TDP_LLM_API_KEY`
+>   in `.env`. No extra step.
 
 ## Local development
 
