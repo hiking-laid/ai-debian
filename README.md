@@ -69,6 +69,5 @@ weight+age nutrition scaling & safety validation, multi-provider LLM (Copilot de
 OpenAI / Anthropic), a normalized PostgreSQL layer (SQLAlchemy + Alembic), history-backed
 variety, and profile-timezone-aware dates.
 
-**TODO:** encode real NZ MoH / NHMRC + WHO figures in `nutrition/reference.py` (currently
-sensible placeholders — see `TODO.md` 🔴). **Live supermarket integration** and **bilingual
+**TODO:** **Live supermarket integration** and **bilingual
 UI** are deferred to future versions (DESIGN.md §10).

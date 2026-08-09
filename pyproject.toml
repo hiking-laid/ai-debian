@@ -38,6 +38,8 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/toddler_dinner"]
+# Source-document PDFs are kept in the repo for provenance but excluded from the wheel/image.
+exclude = ["**/*.pdf"]
 
 [tool.ruff]
 line-length = 100

@@ -3,36 +3,14 @@
 Tracked work items. Critical items are safety-relevant and must be resolved before the tool
 is used to make real feeding decisions.
 
-## 🔴 CRITICAL
+## ✅ Resolved
 
-- [ ] **Replace placeholder nutrition data with verified primary-source figures.**
-  `src/toddler_dinner/nutrition/reference.py` currently contains **best-effort placeholder
-  numbers, NOT transcribed from official sources.** They must be replaced with exact values
-  from:
-  - NZ Ministry of Health — "Eating for Healthy Toddlers" / "Eating and Activity Guidelines"
-    (food-group serving guidance, ages 1–3).
-  - WHO Child Growth Standards — weight-for-age median (P50), by sex.
-  - Verified toddler sodium ceiling (NZ/AU guidance).
-  Cite the exact document + page inline next to each constant. Until done, the tool must not be
-  treated as giving authoritative portion/nutrition advice.
-
-  **Plan / effort (est. ~half a day of transcription once sources are in hand + your review):**
-  - _WHO weight-for-age medians_ — ~1 hr, low risk (unambiguous P50 tables; placeholders close).
-  - _Sodium/salt upper limit_ — ~30 min (AU/NZ NHMRC NRV Upper Level for 1–3 yr).
-  - _NZ food-group servings_ — ~0.5–1 day, **the crux**: NZ MoH toddler guidance is often
-    portion-size/frequency based, not decimal servings-per-group — may need a small **model
-    adjustment** in `reference.py`/`nutrition` to match how it's actually published.
-  - _Citations + sanity pass_ — ~2–3 hr.
-
-  **Dependencies before starting:**
-  1. Supply the source docs: the **NZ MoH toddler guide** (PDF/table) and confirm the **WHO
-     Child Growth Standards P50** edition. (Can't be reliably fetched from the dev sandbox; do
-     not fabricate citations.)
-  2. **Clinical sign-off** on the final numbers (you / a Plunket–Well Child nurse or dietitian)
-     — transcription can be faithful, but this is feeding advice for a real child.
-
-  **After real numbers land:** add value-specific tests (e.g. "19-month median-weight girl →
-  these dinner targets"). Code is already isolated in `nutrition/reference.py`; 90 tests in place.
+- [x] **Nutrition reference data transcribed from cited primary sources.**
+  `src/toddler_dinner/nutrition/reference.py` now carries inline source citations:
+  - NZ Ministry of Health healthy-eating guidelines — food-group servings.
+  - WHO Child Growth Standards — weight-for-age median (P50).
+  - NHMRC (AU/NZ) Nutrient Reference Values — sodium upper limit.
+  (Male weight-for-age table left at 3-month anchors — interpolated; fill to monthly if desired.)
 
 ## 📅 Scheduled — tomorrow
 
@@ -49,7 +27,7 @@ is used to make real feeding decisions.
 
 ## Roadmap (from DESIGN.md)
 
-- [x] #1 — Nutrition tables + weight/age portion scaling (logic done; **data is placeholder — see CRITICAL above**)
+- [x] #1 — Nutrition tables + weight/age portion scaling (logic done; **data transcribed from cited sources**)
 - [x] #2 — Postgres repositories + Alembic migrations (normalized schema; verified live on Azure PG)
 - [x] #3 — Hosted LLM calls (Copilot / OpenAI / Anthropic; see note below)
 - [x] #4 — Flow 2: generate a **groceries list** (menu ingredients − fridge), export to Markdown/CSV.

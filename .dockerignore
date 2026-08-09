@@ -27,6 +27,9 @@ data/exports/
 # Tests aren't needed in the runtime image
 tests/
 
+# Nutrition source-document PDFs (provenance only, not needed at runtime)
+**/*.pdf
+
 # Editor/OS cruft
 .vscode/
 .idea/

@@ -345,5 +345,4 @@ The migration stamps `alembic_version`, so a `psql`-applied schema is still reco
 ## 11. Open Items (fill in during setup)
 
 - Specific allergies / dietary rules (start empty in config).
-- Exact NZ MoH / NHMRC reference tables to encode.
 - Chosen hosted LLM vendor/model (interface makes it swappable).
