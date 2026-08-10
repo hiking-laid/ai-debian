@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
 from functools import lru_cache
 from pathlib import Path
 
@@ -30,6 +30,8 @@ def get_planner() -> Planner:
 
 class ChatRequest(BaseModel):
     message: str
+    recipe: Recipe | None = None   # the card currently on screen (for edits / no-op keep)
+    mode: str | None = None        # 'tonight' | 'plan' — which card the user is looking at
 
 
 @app.get("/")
@@ -38,10 +40,13 @@ def index() -> FileResponse:
 
 
 def _note_from_params(params: dict) -> str | None:
-    """Human-readable 'why' note for the card (e.g. what we're avoiding)."""
+    """Human-readable 'why' note for the card (e.g. what we're including/avoiding)."""
+    bits = []
+    if params.get("include"):
+        bits.append("Including " + ", ".join(params["include"]))
     if params.get("exclude"):
-        return "Avoiding " + ", ".join(params["exclude"])
-    return None
+        bits.append("Avoiding " + ", ".join(params["exclude"]))
+    return " · ".join(bits) if bits else None
 
 
 # --- Structured JSON API (for the card/button UI) ---------------------------
@@ -133,17 +138,60 @@ def api_history(days: int | None = None, planner: Planner = Depends(get_planner)
 
 @app.post("/api/chat")
 def api_chat(req: ChatRequest, planner: Planner = Depends(get_planner)) -> dict:
-    """Free-text 'exceptions' box: route the message, then return a **card payload** (not text),
-    so the UI renders it like a button result. Honours extracted params (e.g. `exclude`).
+    """Free-text 'note to the kitchen'. Three outcomes:
+    - navigate: same as the buttons (tonight / plan / another) — returns a card payload;
+    - customize: build a recipe from the parent's request (optionally editing the current card),
+      guardrail-check it, and return it on today's or tomorrow's card;
+    - ignore: gibberish / not-about-dinner — no-op that keeps the current card.
     """
     decision = route(req.message.strip(), llm=planner.llm)
-    if decision.action is None:
-        return {"message": "Sorry, I didn't catch that — try “avoid broccoli”, "
-                           "“make it dairy-free”, or “plan tomorrow”."}
     params = decision.params or {}
     exclude = params.get("exclude")
     note = _note_from_params(params)
+
+    def _source_for(mode: str) -> str:
+        return "plan" if mode == "plan" else "fresh"
+
+    def _out_mode() -> str:
+        target = params.get("target")
+        if target == "tomorrow":
+            return "plan"
+        if target == "today":
+            return "tonight"
+        return req.mode or "tonight"
+
+    # --- ignore / unrecognised: no-op, keep the card on screen (a chef ignores nonsense) ---
+    if decision.action is None:
+        if req.recipe is not None:
+            return {"recipe": req.recipe, "source": _source_for(req.mode or "tonight"),
+                    "message": "Left your current dinner unchanged."}
+        return {"message": "Sorry, I didn't catch that — try “add broccoli”, “make it "
+                           "dairy-free”, or “plan tomorrow”."}
+
     try:
+        if decision.action == Action.CUSTOMIZE:
+            mode = _out_mode()
+            try:
+                recipe = planner.customize(
+                    instructions=req.message,
+                    base=req.recipe,
+                    include=params.get("include"),
+                    exclude=exclude,
+                    on=(planner.today() + timedelta(days=1)) if mode == "plan" else None,
+                )
+            except ValueError as e:  # guardrail rejection -> keep the current card
+                resp: dict = {"message": f"I couldn't do that safely: {e}"}
+                if req.recipe is not None:
+                    resp["recipe"] = req.recipe
+                    resp["source"] = _source_for(mode)
+                return resp
+            if mode == "plan":
+                payload = _plan_payload(planner.plan_for_recipe(recipe))
+                if note:
+                    payload["note"] = note
+                return payload
+            return {"recipe": recipe, "source": "fresh", "note": note}
+
         if decision.action == Action.PLAN_TOMORROW:
             payload = _plan_payload(planner.plan_tomorrow(use_llm=params.get("fresh", True)))
             if note:

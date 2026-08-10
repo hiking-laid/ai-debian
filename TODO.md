@@ -14,16 +14,17 @@ is used to make real feeding decisions.
 
 ## 📅 Scheduled — tomorrow
 
-- [ ] **Test & improve LLM assistance for exception cases** (the collapsed "more options" chat).
-      Exercise free-text requests: "avoid broccoli", "use up the broccoli", "make it dairy-free",
-      "something lighter", etc., and judge quality (a quick test on the current page felt
-      unsatisfying).
-      Known gaps to address:
-      - The `/chat` path returns **plain text** (`recipe_text`), not a **recipe card** — make the
-        exception flow render a card like the buttons do (consistent UX).
-      - Verify the router reliably extracts params (`exclude`, `fresh`, `date`) and that
-        `another_idea(exclude=...)` actually honours them in the generated recipe.
-      - Consider surfacing *why* (e.g. "avoiding broccoli") and allowing follow-ups.
+- [x] **LLM assistance for exception cases** (the collapsed "note to the kitchen" chat) — issue #2.
+      The box now handles arbitrary requests beyond the three buttons: it classifies free text into
+      **navigate / customize / ignore**, and for `customize` builds a recipe via the recipe-maker
+      LLM (optionally editing the on-screen card), guardrail-checks it (`validate_recipe`), and
+      renders it on **today's or tomorrow's** card. Not auto-saved — the card's own "Save to
+      Cookbook" button preserves it. Gibberish is a **no-op** that keeps the current card.
+      Delivered:
+      - `/api/chat` returns a **recipe card** (not plain text), honouring `include` / `exclude`
+        and `target` (today/tomorrow); edit signals ("add", "swap", "make it …") suppress the
+        navigation fast path so "add broccoli to tonight's dinner" edits instead of re-suggesting.
+      - Surfaces *why* via a note ("Including broccoli", "Avoiding milk, cheese…").
 
 ## Roadmap (from DESIGN.md)
 

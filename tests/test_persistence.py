@@ -92,10 +92,13 @@ def test_menu_and_shopping_list_persist(sf):
 
 
 def test_dinner_history_variety_window(sf):
+    recipes = PgRecipeRepository(sf)
     hist = PgDinnerHistoryRepository(sf)
     today = date(2025, 6, 10)
-    hist.record("Old Dinner", today - timedelta(days=10))
-    hist.record("Recent Dinner", today - timedelta(days=2))
+    old = recipes.add_recipe(_recipe("Old Dinner"))
+    recent = recipes.add_recipe(_recipe("Recent Dinner"))
+    hist.record("Old Dinner", today - timedelta(days=10), old.id)
+    hist.record("Recent Dinner", today - timedelta(days=2), recent.id)
 
     within5 = hist.recent_titles(within_days=5, on=today)
     assert "Recent Dinner" in within5
@@ -221,7 +224,8 @@ def test_history_recent_returns_full_recipes(sf):
     r = recipes.mark_cooked(_recipe("Lentil Risotto"))
     today = date(2025, 6, 10)
     hist.record(r.title, today, r.id)
-    hist.record("Legacy Title Only", today - timedelta(days=20), None)  # outside window
+    old = recipes.mark_cooked(_recipe("Old Risotto"))
+    hist.record(old.title, today - timedelta(days=20), old.id)  # outside window
     entries = hist.recent(5, on=today)
     assert len(entries) == 1
     assert entries[0].served_on == today

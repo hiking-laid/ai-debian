@@ -38,6 +38,8 @@
     .card ul li{ position:relative; padding:.13rem 0 .13rem 1rem; font-size:.95rem; }
     .card ul li::before{ content:"\00b7"; position:absolute; left:.25rem; color:var(--bronze); font-weight:700; }
     .card ul li.pad::before{ content:""; }
+    .card ul li.more{ color:var(--muted); font-style:italic; }
+    .card ul li.more::before{ content:""; }
     .card ol{ margin:.4rem 0 .2rem; padding-left:1.25rem; }
     .card ol li{ margin:.35rem 0; font-size:.95rem; }
     .card ol li::marker{ color:var(--bronze); font-family:'Cormorant Garamond',serif; font-weight:600; }
@@ -49,10 +51,11 @@
     .card-actions .primary:hover{ background:var(--bronze); border-color:var(--bronze); }
 
     .history{ display:flex; gap:1rem; overflow-x:auto; padding-bottom:.5rem; }
-    .history .card{ min-width:255px; flex:0 0 auto; margin-bottom:0; }
+    .history .card{ width:260px; flex:0 0 auto; margin-bottom:0; }
     .history .hero{ height:78px; margin:-1.4rem -1.5rem .9rem; }
     .history .hero span{ font-size:2.2rem; }
-    .history .card h3{ font-size:1.3rem; }
+    /* Fixed width: long titles are clipped to one line with an ellipsis. */
+    .history .card h3{ font-size:1.3rem; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
     .day{ font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.2em; font-size:.6rem; color:var(--bronze); margin-bottom:.3rem; }
 
     details{ border-top:1px solid var(--line); margin-top:2.5rem; padding:1.1rem 0 0; }
@@ -69,6 +72,21 @@
     .empty.err{ color:#a3372f; }
     .loading{ animation:pulse 1.1s ease-in-out infinite; }
     @keyframes pulse{ 0%,100%{opacity:.4} 50%{opacity:1} }
+
+    /* Suggestion card reveal: a sheet of paper unfolding downward from the top edge. */
+    @keyframes unfold{
+      0%{   opacity:0; transform:perspective(1600px) rotateX(-88deg); }
+      55%{  opacity:1; transform:perspective(1600px) rotateX(10deg); }
+      100%{ opacity:1; transform:perspective(1600px) rotateX(0deg); }
+    }
+    #suggestion .card.unfold{
+      transform-origin:top center;
+      animation:unfold .6s cubic-bezier(.22,.68,.28,1) both;
+      box-shadow:0 10px 28px rgba(33,28,22,.10);
+    }
+    @media (prefers-reduced-motion: reduce){
+      #suggestion .card.unfold{ animation:none; }
+    }
   </style>
 </head>
 <body>
@@ -94,7 +112,7 @@
   <details>
     <summary>More options — a note to the kitchen</summary>
     <div class="chatrow">
-      <input id="chat" placeholder="avoid pasta · use up the broccoli · make it dairy-free"
+      <input id="chat" placeholder="add broccoli · make it dairy-free · swap chicken for tofu · plan tomorrow"
              onkeydown="if(event.key==='Enter')sendChat()" />
       <button onclick="sendChat()">Send</button>
     </div>
@@ -138,9 +156,15 @@ function recipeCardHTML(r, buttons){
 }
 
 // ---- state helpers ---------------------------------------------------------
+function scrollToSuggestion(){
+  document.getElementById('suggestion').scrollIntoView({behavior:'smooth', block:'center'});
+}
 function setBusy(on){
   document.querySelectorAll('.actions button').forEach(b=>b.disabled=on);
-  if(on) document.getElementById('suggestion').innerHTML = '<p class="empty loading">Composing your dinner…</p>';
+  if(on){
+    document.getElementById('suggestion').innerHTML = '<p class="empty loading">Composing your dinner…</p>';
+    scrollToSuggestion();   // jump to the Suggestion section on every action
+  }
 }
 function showError(msg){ document.getElementById('suggestion').innerHTML = `<p class="empty err">${esc(msg)}</p>`; }
 function toast(msg){ const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show'); setTimeout(()=>t.classList.remove('show'),1900); }
@@ -172,6 +196,12 @@ function render(d){
     ? `<button onclick="save()">Save to Cookbook</button><button onclick="anotherIdea()">Another</button>`
     : `<button class="primary" onclick="cooked()">Cooked It</button><button onclick="save()">Save to Cookbook</button><button onclick="anotherIdea()">Another</button>`;
   document.getElementById('suggestion').innerHTML = header + recipeCardHTML(current, btns);
+  // Play the unfold reveal, then smoothly bring the card to the centre of the viewport.
+  const card = document.querySelector('#suggestion .card');
+  if(card){
+    card.classList.add('unfold');
+    requestAnimationFrame(()=>card.scrollIntoView({behavior:'smooth', block:'center'}));
+  }
 }
 
 // ---- actions ---------------------------------------------------------------
@@ -206,10 +236,13 @@ async function loadHistory(){
   if(d.error){ el.innerHTML=`<p class="empty err">${esc(d.error)}</p>`; return; }
   histEntries = d.entries||[];
   if(!histEntries.length){ el.innerHTML='<p class="empty">No dinners recorded yet.</p>'; return; }
-  const maxIng = Math.max(...histEntries.map(e=>(e.recipe.ingredients||[]).length));
   el.innerHTML = histEntries.map((e,idx)=>{
-    const rows = (e.recipe.ingredients||[]).map(ingLi);
-    while(rows.length<maxIng) rows.push('<li class="pad">&nbsp;</li>');
+    // Fixed height: always render 5 ingredient slots (padded if fewer), plus one trailing
+    // slot that shows '…' when the recipe has more than 5 ingredients (else blank).
+    const all = e.recipe.ingredients||[];
+    const rows = all.slice(0,5).map(ingLi);
+    while(rows.length<5) rows.push('<li class="pad">&nbsp;</li>');
+    rows.push(all.length>5 ? `<li class="more">… +${all.length-5} more</li>` : '<li class="pad">&nbsp;</li>');
     return `<div class="card">${heroFor(e.recipe)}
       <div class="day">${esc(dayLabel(e.served_on))}</div>
       <h3>${esc(e.recipe.title)}</h3>
@@ -232,15 +265,16 @@ async function sendChat(){
   const el=document.getElementById('chat'); const v=el.value.trim(); if(!v) return;
   el.value='';
   setBusy(true);
-  document.getElementById('suggestion').scrollIntoView({behavior:'smooth', block:'start'});
-  const d = await api('/api/chat', {message:v});
-  if(d.message){
-    document.querySelectorAll('.actions button').forEach(b=>b.disabled=false);
-    showInfo(d.message);
+  const d = await api('/api/chat', {message:v, recipe:current, mode});
+  document.querySelectorAll('.actions button').forEach(b=>b.disabled=false);
+  if(d.recipe){
+    render(d);                                   // updated (or unchanged) card
+    mode = (d.source==='plan') ? 'plan' : 'tonight';
+    if(d.message) toast(d.message);              // e.g. no-op / guardrail note
     return;
   }
-  render(d);
-  mode = (d.source==='plan') ? 'plan' : 'tonight';
+  if(d.message){ showInfo(d.message); return; }  // nothing on screen to keep
+  render(d);                                       // error path handled in render()
 }
 
 loadHistory();

@@ -187,9 +187,10 @@ class ShoppingItemORM(Base):
 class DinnerHistoryORM(Base):
     __tablename__ = "dinner_history"
 
-    id: Mapped[int] = mapped_column(primary_key=True)
-    recipe_id: Mapped[int | None] = mapped_column(
-        ForeignKey("recipes.id", ondelete="SET NULL"), nullable=True, index=True
+    # One dinner per recipe per day: (recipe_id, served_on) is the primary key, so cooking the
+    # same recipe twice in a day is an idempotent upsert rather than a duplicate row.
+    recipe_id: Mapped[int] = mapped_column(
+        ForeignKey("recipes.id", ondelete="CASCADE"), primary_key=True
     )
+    served_on: Mapped[date] = mapped_column(Date, primary_key=True, index=True)
     title: Mapped[str] = mapped_column(String(200))
-    served_on: Mapped[date] = mapped_column(Date, index=True)

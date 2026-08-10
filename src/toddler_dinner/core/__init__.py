@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -124,6 +125,13 @@ def _protein_family(name: str) -> str:
     return n
 
 
+# Rotating cooking styles/cuisines to diversify generated dinners beyond the main protein.
+_COOKING_STYLES = (
+    "simple one-pot", "stir-fry", "oven-baked", "steamed", "soup or stew",
+    "mild curry", "pasta-based", "rice bowl", "mash", "fritter or patty",
+)
+
+
 class Planner:
     """Bundles providers + repos so actions have a single entry point."""
 
@@ -146,9 +154,27 @@ class Planner:
         self.history = history
         # In-memory recent-dinner titles for variety when no history repo is wired (tests).
         self.recent_dinner_titles: list[str] = []
-        # Variety steering for generation: recently suggested titles + a protein rotation cursor.
+        # Variety steering for generation: recently suggested titles + a randomized protein
+        # rotation (shuffled so the featured protein isn't a fixed, code-driven sequence).
         self.recent_suggestions: list[str] = []
-        self._variety_counter = 0
+        self._protein_rotation: list[str] = []
+        self._last_featured: str | None = None
+
+    def _next_featured(self, families: list[str]) -> str | None:
+        """Pick the main protein to feature: a shuffled rotation so no family repeats until all
+        have been used, and the first pick isn't a deterministic (always-chicken) choice."""
+        if not families:
+            return None
+        if not self._protein_rotation:
+            order = list(families)
+            random.shuffle(order)
+            # Avoid butting the same family across cycle boundaries.
+            if len(order) > 1 and order[0] == self._last_featured:
+                order.append(order.pop(0))
+            self._protein_rotation = order
+        featured = self._protein_rotation.pop(0)
+        self._last_featured = featured
+        return featured
 
     def _tz(self) -> ZoneInfo:
         try:
@@ -199,7 +225,7 @@ class Planner:
                 if (i.category or "").lower() in ("protein", "legume")
             )
         )
-        featured = families[self._variety_counter % len(families)] if families else None
+        featured = self._next_featured(families)
         avoid = list(exclude or []) + self.recent_suggestions[-6:] + list(self._recent_cooked_titles())
 
         prompt = (
@@ -214,13 +240,16 @@ class Planner:
                 "Vary the main protein, cooking style, and cuisine."
             )
         prompt += f" Respect exclusions {self.profile.exclusions.model_dump()}."
+        # A randomly chosen cooking style breaks the LLM out of converging on the same dish when
+        # the fridge (and thus the prompt) is otherwise identical across calls.
+        style = random.choice(_COOKING_STYLES)
+        prompt += f" Lean towards a {style} style this time, if it suits the ingredients."
 
         recipe = self.llm.generate_recipe(prompt)
         result = validate_recipe(recipe, self.profile)
         if not result.ok:
             raise ValueError(f"Generated recipe failed safety rules: {result.hard_violations}")
 
-        self._variety_counter += 1
         self.recent_suggestions.append(recipe.title)
         self.recent_suggestions = self.recent_suggestions[-10:]
         return recipe  # caller confirms, then persist_approved()
@@ -228,6 +257,76 @@ class Planner:
     def persist_approved(self, recipe: Recipe) -> Recipe:
         recipe.source = "llm"
         return self.approve(recipe)
+
+    def customize(
+        self,
+        instructions: str,
+        base: Recipe | None = None,
+        include: list[str] | None = None,
+        exclude: list[str] | None = None,
+        on: date | None = None,
+    ) -> Recipe:
+        """Free-form 'note to the kitchen': turn an arbitrary parent request into a recipe.
+
+        Reuses the recipe-maker system prompt (via `generate_recipe`) with a built instruction
+        that carries the current card (when editing), the parent's words verbatim, and any
+        include/avoid hints. The result is guardrail-checked with `validate_recipe`; a hard
+        violation raises ValueError so the caller can keep the current card unchanged.
+
+        Not persisted here — the returned recipe is shown on the card; the user saves it via
+        the card's own 'Save to Cookbook' button if they want to keep it.
+        """
+        if self.llm is None:
+            raise RuntimeError("No LLM provider configured.")
+        items = self.inventory.list_items()
+        have = ", ".join(f"{i.quantity}{i.unit} {i.name}" for i in items)
+
+        parts: list[str] = []
+        if base is not None:
+            ings = ", ".join(f"{i.quantity}{i.unit} {i.name}" for i in base.ingredients)
+            parts.append(
+                f"Start from this current toddler dinner and change only what the request asks, "
+                f"keeping the rest: title '{base.title}'; ingredients [{ings}]; steps {base.steps}."
+            )
+        else:
+            parts.append(
+                f"Create one toddler dinner (child age {self.child_age_months(on)} months)."
+            )
+        parts.append(f"Parent's request, in their own words: {instructions!r}.")
+        parts.append(
+            "If the parent supplied their own full recipe, keep it essentially as they wrote it — "
+            "same dish and ingredients — only adjusting for toddler safety, texture, and clear steps."
+        )
+        if include:
+            parts.append(f"These ingredients MUST appear in the recipe: {', '.join(include)}.")
+        if exclude:
+            parts.append(f"Do NOT include: {', '.join(exclude)}.")
+        if have:
+            parts.append(f"Prefer these on-hand items where it makes sense: {have}.")
+        parts.append(f"Respect exclusions {self.profile.exclusions.model_dump()}.")
+        parts.append(
+            "If the request is not about food, is empty, or makes no sense, ignore it and return "
+            "the current recipe unchanged (or a simple safe toddler dinner if there is none)."
+        )
+
+        recipe = self.llm.generate_recipe(" ".join(parts))
+        recipe.source = "manual"
+        result = validate_recipe(recipe, self.profile, on)
+        if not result.ok:
+            raise ValueError("; ".join(result.hard_violations))
+        return recipe
+
+    def plan_for_recipe(self, recipe: Recipe, for_date: date | None = None) -> PlanResult:
+        """Wrap an already-chosen recipe as a tomorrow-style plan (menu + groceries), without
+        persisting it — used to render a customised recipe on the 'tomorrow' card."""
+        for_date = for_date or (self.today() + timedelta(days=1))
+        items = self.inventory.list_items()
+        have = _have_names(items)
+        already_have = [ing.name for ing in recipe.ingredients if _in_fridge(ing.name, have)]
+        menu = Menu(for_date=for_date, items=[MenuItem(recipe=recipe)])
+        return PlanResult(
+            menu=menu, groceries=groceries_for(recipe, items), already_have=already_have
+        )
 
     # --- save / cook / history --------------------------------------------------
     def approve(self, recipe: Recipe) -> Recipe:

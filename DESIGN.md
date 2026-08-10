@@ -285,7 +285,7 @@ Table dinner_history {
 | `POST /api/recipe/save` `{recipe}` | Approve → cookbook (auto-suggestable) |
 | `POST /api/recipe/cooked` `{recipe, on?}` | Record as cooked + a history entry |
 | `GET /api/history?days=N` | Recent cooked dinners (full recipes) |
-| `POST /chat` | Free-text exceptions via the router |
+| `POST /api/chat` `{message, recipe?, mode?}` | Free-text "note to the kitchen": navigate (like the buttons), **customize** (build/edit a guardrail-checked recipe for today/tomorrow), or ignore gibberish (no-op) |
 
 Each card **embeds its own recipe**, so Save/Cooked buttons POST that recipe back — no
 server-side session state, no disambiguation.

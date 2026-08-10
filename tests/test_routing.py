@@ -72,6 +72,31 @@ def test_unknown_action_from_llm_is_unmatched():
     assert result.via == "unmatched"
 
 
+# --- issue #2: customize classification + gibberish -------------------------
+
+def test_llm_classifies_customize_with_include():
+    llm = FakeLLM({"action": "customize",
+                   "params": {"include": ["broccoli"], "target": "today"}})
+    result = route("add some broccoli to tonight's dinner", llm=llm)
+    assert result.action == Action.CUSTOMIZE
+    assert result.params == {"include": ["broccoli"], "target": "today"}
+    assert result.via == "llm"
+
+
+def test_edit_signal_suppresses_navigation_fast_path():
+    # "tonight" alone -> fast path; with an edit signal it must defer to the LLM/customize.
+    assert route("what's for dinner tonight?").via == "fast_path"
+    llm = FakeLLM({"action": "customize", "params": {"exclude": ["cheese"], "target": "today"}})
+    assert route("make tonight's dinner dairy-free", llm=llm).action == Action.CUSTOMIZE
+
+
+def test_llm_null_action_is_unmatched():
+    llm = FakeLLM({"action": None, "params": {}})
+    result = route("asdfghjkl", llm=llm)
+    assert result.action is None
+    assert result.via == "unmatched"
+
+
 def test_no_match_no_llm_is_unmatched():
     result = route("tell me a joke")
     assert result.action is None

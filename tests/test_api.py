@@ -105,6 +105,16 @@ def test_cooked_then_history_and_variety(client):
     assert r["source"] == "fresh"
 
 
+def test_cooked_twice_same_day_is_not_duplicated(client):
+    """Regression (issue #1): clicking COOKED IT TODAY twice must not add duplicate cards."""
+    recipe = _clean_recipe("Chicken Rice")
+    body = {"recipe": recipe.model_dump(mode="json")}
+    assert client.post("/api/recipe/cooked", json=body).json()["ok"]
+    assert client.post("/api/recipe/cooked", json=body).json()["ok"]
+    hist = client.get("/api/history").json()["entries"]
+    assert len(hist) == 1
+
+
 def test_plan_tomorrow_payload(client):
     r = client.post("/api/plan-tomorrow").json()
     assert r["source"] == "plan"

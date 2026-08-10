@@ -37,10 +37,11 @@ class _Inv:
 class _LLM:
     """Fake LLM: routes to the given action/params (for the router), generates a fixed recipe."""
 
-    def __init__(self, action="another_idea", params=None, fail=False):
+    def __init__(self, action="another_idea", params=None, fail=False, recipe=None):
         import json
         self._json = json.dumps({"action": action, "params": params or {}})
         self._fail = fail
+        self._recipe = recipe
 
     def complete(self, system, user):
         return self._json
@@ -48,7 +49,7 @@ class _LLM:
     def generate_recipe(self, prompt):
         if self._fail:
             raise RuntimeError("model exploded")
-        return _clean_recipe("Fresh Bowl")
+        return self._recipe or _clean_recipe("Fresh Bowl")
 
 
 def _make_planner(llm) -> Planner:
@@ -115,3 +116,42 @@ def test_chat_errors_caught_not_500():
     resp = _client(planner).post("/api/chat", json={"message": "skip the broccoli"})
     assert resp.status_code == 200
     assert "error" in resp.json()
+
+
+# --- issue #2: free-form 'note to the kitchen' -------------------------------
+
+def test_chat_customize_include_returns_card_with_note():
+    planner = _make_planner(_LLM(action="customize",
+                                 params={"include": ["broccoli"], "target": "today"}))
+    d = _chat(_client(planner), "add some broccoli please")
+    assert d["source"] == "fresh"
+    assert d["recipe"]["title"] == "Fresh Bowl"
+    assert d["note"] == "Including broccoli"
+
+
+def test_chat_customize_tomorrow_returns_plan_card():
+    planner = _make_planner(_LLM(action="customize", params={"target": "tomorrow"}))
+    d = _chat(_client(planner), "use my chicken kumara mash for tomorrow")
+    assert d["source"] == "plan"
+    assert d["recipe"]["title"] == "Fresh Bowl"
+    assert "for_date" in d and "groceries" in d
+
+
+def test_chat_gibberish_keeps_current_card():
+    planner = _make_planner(_LLM(action=None))     # unrecognised -> no-op
+    base = _clean_recipe("On Screen Dish").model_dump(mode="json")
+    d = _client(planner).post("/api/chat",
+                              json={"message": "asdfghjkl", "recipe": base, "mode": "tonight"}).json()
+    assert d["recipe"]["title"] == "On Screen Dish"   # card preserved
+    assert "message" in d                             # gentle no-op note
+
+
+def test_chat_customize_guardrail_rejection_keeps_card():
+    unsafe = _clean_recipe("Honey Bowl", ings=("honey", "oats"))   # honey -> hard violation
+    planner = _make_planner(_LLM(action="customize", params={"include": ["honey"]},
+                                 recipe=unsafe))
+    base = _clean_recipe("Safe Dish").model_dump(mode="json")
+    d = _client(planner).post("/api/chat",
+                              json={"message": "add honey", "recipe": base, "mode": "tonight"}).json()
+    assert "couldn't do that safely" in d["message"].lower()
+    assert d["recipe"]["title"] == "Safe Dish"        # original card kept, not the unsafe one

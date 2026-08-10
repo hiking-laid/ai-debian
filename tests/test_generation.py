@@ -54,12 +54,13 @@ def _planner():
 
 def test_protein_family_rotates_across_calls():
     planner, llm = _planner()
-    for _ in range(3):
+    families = ["chicken", "beef", "salmon", "lentil"]
+    for _ in range(len(families)):
         planner.another_idea()
-    # families (distinct, in order): chicken, beef, salmon, lentil
-    assert "Make chicken the main protein" in llm.prompts[0]
-    assert "Make beef the main protein" in llm.prompts[1]
-    assert "Make salmon the main protein" in llm.prompts[2]
+    # Featured protein is randomized, but a full cycle must feature each family exactly once
+    # (no repeats, no deterministic always-chicken-first pattern).
+    featured = [next(f for f in families if f"Make {f} the main protein" in p) for p in llm.prompts]
+    assert sorted(featured) == sorted(families)
 
 
 def test_recent_suggestions_are_avoided():
@@ -75,3 +76,50 @@ def test_user_exclude_still_passed():
     planner, llm = _planner()
     planner.another_idea(exclude=["pasta"])
     assert "pasta" in llm.prompts[0]
+
+
+# --- issue #2: customize (free-form note to the kitchen) ---------------------
+
+def test_customize_include_and_instructions_in_prompt():
+    planner, llm = _planner()
+    planner.customize(instructions="please add broccoli", include=["broccoli"])
+    p = llm.prompts[0]
+    assert "please add broccoli" in p
+    assert "MUST appear" in p and "broccoli" in p
+
+
+def test_customize_edits_from_base_recipe():
+    planner, llm = _planner()
+    base = Recipe(
+        title="Chicken Rice",
+        ingredients=[Ingredient(name="chicken", quantity=1, unit="ea")],
+        steps=["cook"], min_age_months=12,
+    )
+    planner.customize(instructions="swap chicken for tofu", base=base)
+    p = llm.prompts[0]
+    assert "Start from this current toddler dinner" in p
+    assert "Chicken Rice" in p            # base recipe carried into the prompt
+
+
+def test_customize_guardrail_rejects_unsafe():
+    import pytest
+    profile = Profile(
+        child=ChildProfile(name="Mia", birthdate=date(2024, 1, 15), sex=Sex.FEMALE, weight_kg=11.5),
+        household=HouseholdProfile(), exclusions=Exclusions(),
+    )
+
+    class _UnsafeLLM:
+        def complete(self, system, user):
+            return ""
+
+        def generate_recipe(self, prompt):
+            return Recipe(
+                title="Honey Toast",
+                ingredients=[Ingredient(name="honey", quantity=1, unit="tsp")],
+                steps=["spread"], min_age_months=12,
+            )
+
+    planner = Planner(profile=profile, inventory=_Inv(),
+                      recipes=InMemoryRecipeRepository(), llm=_UnsafeLLM())
+    with pytest.raises(ValueError):
+        planner.customize(instructions="add honey", include=["honey"])

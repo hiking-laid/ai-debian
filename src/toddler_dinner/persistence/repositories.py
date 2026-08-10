@@ -191,8 +191,23 @@ class PgDinnerHistoryRepository(DinnerHistoryRepository):
             return list(rows)
 
     def record(self, title: str, served_on: date, recipe_id: int | None = None) -> None:
+        """Upsert one dinner-history row keyed by (recipe_id, served_on).
+
+        Recording the same recipe again for the same day is a no-op update (refreshes the
+        title), never a duplicate row. A recipe_id is required by the composite key; when it's
+        missing it is resolved from the title.
+        """
         with self._sf() as s:
-            s.add(DinnerHistoryORM(title=title, served_on=served_on, recipe_id=recipe_id))
+            if recipe_id is None:
+                recipe_id = s.scalar(
+                    select(RecipeORM.id).where(func.lower(RecipeORM.title) == title.lower())
+                )
+            if recipe_id is None:
+                raise ValueError(
+                    f"Cannot record dinner history for {title!r}: no matching recipe. "
+                    "Save/cook the recipe first so it has an id."
+                )
+            s.merge(DinnerHistoryORM(recipe_id=recipe_id, served_on=served_on, title=title))
             s.commit()
 
     def recent(self, days: int, on: date | None = None) -> list[HistoryEntry]:
@@ -202,7 +217,7 @@ class PgDinnerHistoryRepository(DinnerHistoryRepository):
             rows = s.scalars(
                 select(DinnerHistoryORM)
                 .where(DinnerHistoryORM.served_on >= cutoff)
-                .order_by(DinnerHistoryORM.served_on.desc(), DinnerHistoryORM.id.desc())
+                .order_by(DinnerHistoryORM.served_on.desc(), DinnerHistoryORM.recipe_id.desc())
             ).all()
             entries: list[HistoryEntry] = []
             for row in rows:

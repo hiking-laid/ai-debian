@@ -20,6 +20,7 @@ class Action(str, Enum):
     TONIGHT = "tonight"
     PLAN_TOMORROW = "plan_tomorrow"
     ANOTHER_IDEA = "another_idea"
+    CUSTOMIZE = "customize"
 
 
 # Fast-path keyword hints per action (substring match; first hit wins — fine for v1).
@@ -28,6 +29,15 @@ _FAST_PATH: dict[Action, tuple[str, ...]] = {
     Action.PLAN_TOMORROW: ("tomorrow", "plan", "next day"),
     Action.ANOTHER_IDEA: ("another", "something else", "bored", "different", "new idea"),
 }
+
+# Edit signals: when present, the message is a recipe change (customize), so we skip the
+# navigation fast path even if it also mentions "tonight"/"tomorrow" and let the LLM classify
+# (e.g. "add broccoli to tonight's dinner" must edit the card, not just re-suggest tonight).
+_CUSTOMIZE_HINTS: tuple[str, ...] = (
+    "add ", "include", "swap", "replace", "instead", "without", "remove", "extra ",
+    "more ", "less ", "make it", "dairy-free", "dairy free", "gluten-free", "gluten free",
+    "use my", "here's my", "here is my",
+)
 
 # Few-shot examples steer the LLM classifier and show the params it may extract.
 _FEWSHOT: list[tuple[str, dict]] = [
@@ -40,14 +50,28 @@ _FEWSHOT: list[tuple[str, dict]] = [
      {"action": "plan_tomorrow", "params": {}}),
     ("plan a fresh new dinner for tomorrow",
      {"action": "plan_tomorrow", "params": {"fresh": True}}),
+    ("add some broccoli to tonight's dinner",
+     {"action": "customize", "params": {"include": ["broccoli"], "target": "today"}}),
+    ("make tonight's recipe dairy-free",
+     {"action": "customize", "params": {"exclude": ["milk", "cheese", "butter", "yoghurt"],
+                                        "target": "today"}}),
+    ("swap the chicken for tofu and add spinach",
+     {"action": "customize", "params": {"include": ["tofu", "spinach"], "exclude": ["chicken"]}}),
+    ("here is my recipe: chicken and kumara mash, use it for tomorrow",
+     {"action": "customize", "params": {"target": "tomorrow"}}),
+    ("asdfghjkl", {"action": None, "params": {}}),
+    ("tell me a joke", {"action": None, "params": {}}),
 ]
 
 _SYSTEM = (
     "You are an intent router for a toddler-dinner app. Classify the request into exactly one "
-    f"action from: {', '.join(a.value for a in Action)}. Optionally extract params: "
-    "`exclude` (list of foods to avoid), `fresh` (bool, wants a brand-new idea), "
-    "`date` (ISO date). Reply with ONLY a JSON object: "
-    '{"action": <action>, "params": {...}}.'
+    f"action from: {', '.join(a.value for a in Action)}. Use `customize` when the parent wants a "
+    "specific recipe change or a supplied recipe (include/avoid an ingredient, swap something, "
+    "change the style, make it dairy-free, or paste their own recipe). Optionally extract params: "
+    "`include` (list of foods that must appear), `exclude` (list of foods to avoid), "
+    "`target` ('today' or 'tomorrow'), `fresh` (bool, wants a brand-new idea), `date` (ISO date). "
+    "If the text is gibberish or not about dinner, reply with action null. "
+    'Reply with ONLY a JSON object: {"action": <action|null>, "params": {...}}.'
 )
 
 
@@ -87,9 +111,11 @@ def _llm_route(text: str, llm: LLMProvider) -> RouteResult | None:
 
 def route(text: str, llm: LLMProvider | None = None) -> RouteResult:
     low = text.lower()
-    for action, hints in _FAST_PATH.items():
-        if any(h in low for h in hints):
-            return RouteResult(action=action, via="fast_path")
+    # Recipe-edit requests skip the navigation fast path (they need the LLM to build a recipe).
+    if not any(h in low for h in _CUSTOMIZE_HINTS):
+        for action, hints in _FAST_PATH.items():
+            if any(h in low for h in hints):
+                return RouteResult(action=action, via="fast_path")
 
     if llm is not None:
         result = _llm_route(text, llm)
