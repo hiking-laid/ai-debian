@@ -41,7 +41,11 @@ class MatchResult:
 
 def _ingredient_overlap(recipe: Recipe, have: set[str]) -> tuple[int, list[str]]:
     needed = {ing.name.lower() for ing in recipe.ingredients}
-    missing = sorted(n for n in needed if not any(n in h or h in n for h in have))
+    # Pantry staples (water, salt, oil, ...) are assumed on hand -> never counted as missing.
+    missing = sorted(
+        n for n in needed
+        if not _is_staple(n) and not any(n in h or h in n for h in have)
+    )
     return len(needed) - len(missing), missing
 
 

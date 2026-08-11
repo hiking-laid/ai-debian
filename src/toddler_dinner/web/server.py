@@ -39,6 +39,12 @@ def index() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
 
 
+@app.get("/favicon.ico", include_in_schema=False)
+def favicon() -> FileResponse:
+    """Serve the SVG favicon for browsers that probe the site root for /favicon.ico."""
+    return FileResponse(_STATIC / "favicon.svg", media_type="image/svg+xml")
+
+
 def _note_from_params(params: dict) -> str | None:
     """Human-readable 'why' note for the card (e.g. what we're including/avoiding)."""
     bits = []

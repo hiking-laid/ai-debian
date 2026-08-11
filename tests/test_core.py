@@ -82,6 +82,26 @@ def test_no_match():
     assert result.kind in ("partial", "none")
 
 
+def test_pantry_staples_not_reported_as_missing():
+    # water/salt/oil are assumed on hand -> an otherwise-complete recipe is an exact match,
+    # and they never appear in the 'missing' list.
+    recipes = [_recipe("chicken rice", ["chicken", "rice", "water", "salt", "olive oil"])]
+    items = [InventoryItem(name="chicken", quantity=1, unit="ea"),
+             InventoryItem(name="rice", quantity=1, unit="ea")]
+    result = match_from_inventory(recipes, items)
+    assert result.kind == "exact"
+    assert result.missing == []
+
+
+def test_partial_missing_excludes_staples():
+    recipes = [_recipe("veg mash", ["kumara", "broccoli", "water"])]
+    items = [InventoryItem(name="kumara", quantity=1, unit="ea")]
+    result = match_from_inventory(recipes, items)
+    assert result.kind == "partial"
+    assert "broccoli" in result.missing
+    assert "water" not in result.missing   # staple, never flagged as missing
+
+
 # --- validation -------------------------------------------------------------
 
 def test_allergy_is_hard_violation():
