@@ -9,6 +9,7 @@ import pytest
 from toddler_dinner.config import Secrets
 from toddler_dinner.providers.llm import build_llm_provider
 from toddler_dinner.providers.llm.anthropic import AnthropicLLMProvider
+from toddler_dinner.providers.llm.azure import AzureOpenAIProvider, AzureResponsesProvider
 from toddler_dinner.providers.llm.base import OpenAICompatibleProvider, extract_json
 from toddler_dinner.providers.llm.copilot import CopilotLLMProvider
 from toddler_dinner.providers.llm.openai import OpenAILLMProvider
@@ -153,6 +154,116 @@ def test_factory_selects_provider():
         build_llm_provider(Secrets(llm_provider="anthropic", llm_api_key="k")),
         AnthropicLLMProvider,
     )
+    assert isinstance(
+        build_llm_provider(Secrets(
+            _env_file=None,
+            llm_provider="azure", llm_api_key="k",
+            azure_endpoint="https://res.openai.azure.com", azure_deployment="gpt4o",
+        )),
+        AzureOpenAIProvider,
+    )
+
+
+# --- Azure OpenAI -----------------------------------------------------------
+
+def test_azure_builds_deployment_url_and_api_key_header():
+    client = FakeClient([_chat_reply("hi")])
+    p = AzureOpenAIProvider(
+        api_key="az-key", deployment="gpt4o-dep",
+        resource_endpoint="https://my-res.openai.azure.com/",
+        api_version="2024-02-15-preview", client=client,
+    )
+    assert p.complete("sys", "usr") == "hi"
+    sent = client.posts[0]
+    assert sent["url"] == (
+        "https://my-res.openai.azure.com/openai/deployments/gpt4o-dep"
+        "/chat/completions?api-version=2024-02-15-preview"
+    )
+    assert sent["headers"]["api-key"] == "az-key"      # Azure header, not Bearer
+    assert "Authorization" not in sent["headers"]
+
+
+def test_azure_full_endpoint_override():
+    client = FakeClient([_chat_reply("ok")])
+    p = AzureOpenAIProvider(
+        api_key="k", deployment="dep",
+        endpoint="https://custom/chat?api-version=2025-01-01", client=client,
+    )
+    p.complete("s", "u")
+    assert client.posts[0]["url"] == "https://custom/chat?api-version=2025-01-01"
+
+
+def test_azure_requires_endpoint_or_deployment():
+    with pytest.raises(RuntimeError):
+        AzureOpenAIProvider(api_key="k", deployment="dep")   # no resource endpoint, no override
+
+
+def test_azure_endpoint_with_pasted_path_does_not_double_up():
+    client = FakeClient([_chat_reply("ok")])
+    p = AzureOpenAIProvider(
+        api_key="k", deployment="dep",
+        resource_endpoint="https://res.openai.azure.com/openai/v1",   # stray path
+        client=client,
+    )
+    p.complete("s", "u")
+    assert client.posts[0]["url"] == (
+        "https://res.openai.azure.com/openai/deployments/dep"
+        "/chat/completions?api-version=2024-02-15-preview"
+    )
+
+
+# --- Azure Responses API ----------------------------------------------------
+
+def _responses_reply(text: str) -> dict:
+    return {"output": [
+        {"type": "reasoning", "summary": []},
+        {"type": "message", "role": "assistant",
+         "content": [{"type": "output_text", "text": text}]},
+    ]}
+
+
+def test_azure_responses_builds_url_and_parses_output():
+    client = FakeClient([_responses_reply(RECIPE_JSON)])
+    p = AzureResponsesProvider(
+        api_key="az", deployment="gpt-5.6-sol",
+        resource_endpoint="https://dataops-azure-ai.openai.azure.com",
+        api_version="2025-04-01-preview", client=client,
+    )
+    recipe = p.generate_recipe("make dinner")
+    assert recipe.title == "salmon rice"
+    sent = client.posts[0]
+    assert sent["url"] == (
+        "https://dataops-azure-ai.openai.azure.com/openai/responses"
+        "?api-version=2025-04-01-preview"
+    )
+    assert sent["headers"]["api-key"] == "az"
+    assert sent["json"]["model"] == "gpt-5.6-sol"       # deployment goes in the body
+    assert sent["json"]["instructions"] and sent["json"]["input"] == "make dinner"
+
+
+def test_azure_responses_uses_output_text_convenience_field():
+    client = FakeClient([{"output_text": "hello", "output": []}])
+    p = AzureResponsesProvider(
+        api_key="az", deployment="dep",
+        resource_endpoint="https://res.openai.azure.com", client=client,
+    )
+    assert p.complete("s", "u") == "hello"
+
+
+def test_factory_azure_responses_mode_selected():
+    p = build_llm_provider(Secrets(
+        _env_file=None,
+        llm_provider="azure", llm_api_key="k", azure_api="responses",
+        azure_endpoint="https://res.openai.azure.com", azure_deployment="dep",
+    ))
+    assert isinstance(p, AzureResponsesProvider)
+
+
+def test_factory_azure_requires_api_key():
+    with pytest.raises(RuntimeError):
+        build_llm_provider(Secrets(_env_file=None, llm_provider="azure",
+                                   azure_endpoint="https://r.openai.azure.com",
+                                   azure_deployment="d"))
 
 
 def test_factory_rejects_unknown():

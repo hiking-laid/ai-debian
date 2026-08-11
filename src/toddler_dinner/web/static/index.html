@@ -51,7 +51,9 @@
     .card-actions .primary:hover{ background:var(--bronze); border-color:var(--bronze); }
 
     .history{ display:flex; gap:1rem; overflow-x:auto; padding-bottom:.5rem; }
-    .history .card{ width:260px; flex:0 0 auto; margin-bottom:0; }
+    .history .card{ width:260px; flex:0 0 auto; margin-bottom:0; cursor:pointer;
+                    transition:transform .16s ease, box-shadow .16s ease; }
+    .history .card:hover{ transform:translateY(-4px); box-shadow:0 10px 24px rgba(33,28,22,.14); }
     .history .hero{ height:78px; margin:-1.4rem -1.5rem .9rem; }
     .history .hero span{ font-size:2.2rem; }
     /* Fixed width: long titles are clipped to one line with an ellipsis. */
@@ -87,6 +89,19 @@
     @media (prefers-reduced-motion: reduce){
       #suggestion .card.unfold{ animation:none; }
     }
+
+    /* A history recipe opened into the suggestion panel: 'drawn from the deck'. */
+    #suggestion .card.deck{
+      transform-origin:center bottom;
+      animation:deckDraw .58s cubic-bezier(.2,.68,.24,1) both;
+      box-shadow:0 14px 34px rgba(33,28,22,.16);
+    }
+    @keyframes deckDraw{
+      0%{   opacity:0; transform:translateY(120px) scale(.5) rotate(-10deg); }
+      55%{  opacity:1; transform:translateY(-10px) scale(1.02) rotate(2deg); }
+      100%{ opacity:1; transform:translateY(0) scale(1) rotate(0); }
+    }
+    @media (prefers-reduced-motion: reduce){ #suggestion .card.deck{ animation:none; } }
   </style>
 </head>
 <body>
@@ -159,6 +174,15 @@ function recipeCardHTML(r, buttons){
 function scrollToSuggestion(){
   document.getElementById('suggestion').scrollIntoView({behavior:'smooth', block:'center'});
 }
+// Bring the TOP of a card as close to the viewport's vertical centre as possible.
+// Uses the offsetTop chain (layout position) instead of getBoundingClientRect, so an in-flight
+// reveal animation (e.g. the 'deck' translate/scale) doesn't skew the scroll target.
+// (Browser clamps to [0, maxScroll], so near page top/bottom it lands as centred as it can.)
+function scrollCardTopToCenter(el){
+  let top = 0;
+  for(let n = el; n; n = n.offsetParent) top += n.offsetTop;
+  window.scrollTo({ top: top - window.innerHeight / 2, behavior: 'smooth' });
+}
 function setBusy(on){
   document.querySelectorAll('.actions button').forEach(b=>b.disabled=on);
   if(on){
@@ -200,7 +224,7 @@ function render(d){
   const card = document.querySelector('#suggestion .card');
   if(card){
     card.classList.add('unfold');
-    requestAnimationFrame(()=>card.scrollIntoView({behavior:'smooth', block:'center'}));
+    requestAnimationFrame(()=>scrollCardTopToCenter(card));
   }
 }
 
@@ -243,13 +267,31 @@ async function loadHistory(){
     const rows = all.slice(0,5).map(ingLi);
     while(rows.length<5) rows.push('<li class="pad">&nbsp;</li>');
     rows.push(all.length>5 ? `<li class="more">… +${all.length-5} more</li>` : '<li class="pad">&nbsp;</li>');
-    return `<div class="card">${heroFor(e.recipe)}
+    return `<div class="card" onclick="openHistory(${idx})" title="View recipe">${heroFor(e.recipe)}
       <div class="day">${esc(dayLabel(e.served_on))}</div>
       <h3>${esc(e.recipe.title)}</h3>
       <div class="label">Ingredients</div><ul>${rows.join("")}</ul>
-      <div class="card-actions"><button class="primary" onclick="cookAgain(${idx})">Cooked It Today</button></div></div>`;
+      <div class="card-actions"><button class="primary" onclick="event.stopPropagation(); cookAgain(${idx})">Cooked It Today</button></div></div>`;
   }).join("");
 }
+
+// ---- history detail: open into the suggestion panel ('drawn from the deck') --
+function openHistory(i){
+  const e = histEntries[i]; if(!e) return;
+  current = e.recipe; mode = 'tonight';
+  const btns = `<button class="primary" onclick="cooked()">Cooked It</button>`
+             + `<button onclick="save()">Save to Cookbook</button>`
+             + `<button onclick="anotherIdea()">Another</button>`;
+  const header = `<p class="empty">From your history · ${esc(dayLabel(e.served_on))}</p>`;
+  const sug = document.getElementById('suggestion');
+  sug.innerHTML = header + recipeCardHTML(current, btns);
+  const card = sug.querySelector('.card');
+  if(card){
+    card.classList.add('deck');   // deck-draw reveal (instead of the unfold)
+    requestAnimationFrame(()=>scrollCardTopToCenter(card));
+  }
+}
+
 async function cookAgain(i){
   const r = histEntries[i].recipe;
   const d = await api('/api/recipe/cooked', {recipe:r});
