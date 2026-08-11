@@ -65,6 +65,25 @@ pytest
 docker compose up --build   # migrations auto-run on startup; app on TDP_WEB_PORT (default 8080)
 ```
 
+## Deploy to the NAS (prebuilt image — no source needed)
+
+Code is baked into a published image; `config/`, `data/`, and `.env` stay on the NAS as volumes.
+
+1. **CI publishes the image.** Pushing to `main` (or a `v*` tag) runs
+   `.github/workflows/publish.yml`, which builds a multi-arch image (incl. `linux/arm64`) and
+   pushes it to `ghcr.io/aiden-liu/toddler_dinner_planner`. One-time setup: add a repo secret
+   `GHCR_PAT` (a `write:packages` PAT from the **aiden-liu** account — a different owner than
+   this repo, so the default `GITHUB_TOKEN` can't push there).
+2. **On the NAS**, keep `docker-compose.prod.yml`, `.env`, `config/`, and `data/` in place, then:
+   ```bash
+   docker login ghcr.io -u aiden-liu        # once, only if the package is private
+   docker compose -f docker-compose.prod.yml pull
+   docker compose -f docker-compose.prod.yml up -d   # entrypoint auto-applies DB migrations
+   ```
+
+No more zip/unzip/replace — updates are `pull` + `up -d`.
+
+
 ## Status
 
 **Implemented:** a card/button web UI over the whole flow — tonight's dinner (DB-first, with
