@@ -63,7 +63,9 @@ class Recipe(BaseModel):
     id: int | None = None
     title: str
     ingredients: list[Ingredient]
-    steps: list[str]
+    equipment: list[str] = Field(default_factory=list)
+    steps: list[str]  # the "Method": one action per step
+    tips: list[str] = Field(default_factory=list)
     nutrition: NutritionFacts = Field(default_factory=NutritionFacts)
     texture: str | None = None  # e.g. "soft mash", "small soft pieces"
     min_age_months: int = 12
@@ -96,6 +98,25 @@ class HistoryEntry(BaseModel):
 
     served_on: date
     recipe: Recipe
+
+
+# Sections a sticker may be pinned to (besides a specific Method step, or nothing = general).
+STICKER_SECTIONS = ("ingredients", "equipment", "method", "tips")
+
+
+class Sticker(BaseModel):
+    """A post-cook handwritten note pinned to a recipe (general), a section, or a Method step.
+
+    API-facing shape: the step target is a 0-based *index* into the recipe's Method; the DB stores
+    it as a `recipe_steps.id` (resolved by the repository) so it survives step reordering.
+    """
+
+    id: int | None = None
+    recipe_id: int
+    content: str
+    target_section: str | None = None      # one of STICKER_SECTIONS, else None
+    target_step_index: int | None = None   # 0-based position within Method, else None
+    created_at: datetime = Field(default_factory=_utcnow)
 
 
 class ShoppingItem(BaseModel):

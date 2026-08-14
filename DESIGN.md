@@ -137,9 +137,12 @@ veg), each with a single **Cooked It Today** to re-record it. Generative leftove
 Per item: `name`, `quantity`, `unit`, `best_before`, `category`, `opened?`, `location` (fridge/shelf).
 
 ### PostgreSQL (NAS)
-- `recipes`: ingredients+quantities, steps, per-serving nutrition, texture/age suitability,
-  hazard flags, tags, `approved` (cookbook / auto-suggest), `cooked` (has been eaten — drives
-  history but not auto-suggested).
+- `recipes`: ingredients+quantities, equipment, method steps, tips, per-serving nutrition,
+  texture/age suitability, hazard flags, tags, `approved` (cookbook / auto-suggest), `cooked`
+  (has been eaten — drives history but not auto-suggested).
+- `recipe_stickers`: post-cook handwritten notes pinned to a recipe (general), a section, or a
+  Method step (web detail view only). A step pin references `recipe_steps.id` with
+  `ON DELETE SET NULL`, so removing a step gracefully demotes its stickers to general.
 - `dinner_history`: recipe + date served (drives both **variety** exclusion and the **history**
   view). Populated by "Cooked It".
 - `menus`: generated menus (tonight + planned).
@@ -186,6 +189,20 @@ Table recipe_steps {
   text text
 }
 
+Table recipe_equipment {
+  id int [pk, increment]
+  recipe_id int [ref: > recipes.id, not null]
+  position int
+  text text
+}
+
+Table recipe_tips {
+  id int [pk, increment]
+  recipe_id int [ref: > recipes.id, not null]
+  position int
+  text text
+}
+
 Table recipe_nutrition {
   recipe_id int [pk, ref: - recipes.id] // 1:1 with recipes
   energy_kcal float [null]
@@ -215,6 +232,16 @@ Table recipe_hazards {
   id int [pk, increment]
   recipe_id int [ref: > recipes.id, not null]
   flag varchar(60)
+}
+
+Table recipe_stickers {
+  id int [pk, increment]
+  recipe_id int [ref: > recipes.id, not null] // ON DELETE CASCADE
+  content text // handwritten post-cook note (<=280 chars)
+  target_section varchar(30) [null] // ingredients|equipment|method|tips, else general
+  target_step_id int [ref: > recipe_steps.id, null] // ON DELETE SET NULL -> demotes to general
+  created_at timestamptz
+  updated_at timestamptz
 }
 
 Table menus {

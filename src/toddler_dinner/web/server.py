@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from toddler_dinner.app import build_planner
 from toddler_dinner.core import Planner
-from toddler_dinner.models import Recipe
+from toddler_dinner.models import STICKER_SECTIONS, Recipe
 from toddler_dinner.routing import Action, route
 
 app = FastAPI(title="Toddler Dinner Planner")
@@ -138,6 +138,91 @@ def api_history(days: int | None = None, planner: Planner = Depends(get_planner)
     """Recent cooked dinners (full recipes) for the history view."""
     try:
         return {"entries": planner.recent_cooked(days)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+# --- Stickers (post-cook handwritten notes) ---------------------------------
+
+_STICKER_MAX = 280
+
+
+class StickerCreate(BaseModel):
+    content: str
+    target_section: str | None = None
+    target_step_index: int | None = None
+
+
+class StickerPatch(BaseModel):
+    content: str | None = None
+    set_target: bool = False           # when true, (re)assign the pin target below
+    target_section: str | None = None
+    target_step_index: int | None = None
+
+
+def _clean_target(section: str | None, step_index: int | None) -> tuple[str | None, int | None]:
+    """Normalise a pin target: a step wins over a section; unknown section -> general."""
+    if step_index is not None:
+        return None, step_index
+    if section in STICKER_SECTIONS:
+        return section, None
+    return None, None
+
+
+@app.get("/api/recipe/{recipe_id}/stickers")
+def api_stickers_list(recipe_id: int, planner: Planner = Depends(get_planner)) -> dict:
+    try:
+        return {"stickers": planner.stickers.list_for_recipe(recipe_id)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+@app.post("/api/recipe/{recipe_id}/stickers")
+def api_stickers_create(
+    recipe_id: int, body: StickerCreate, planner: Planner = Depends(get_planner)
+) -> dict:
+    try:
+        content = body.content.strip()[:_STICKER_MAX]
+        if not content:
+            return {"error": "empty sticker"}
+        section, step_index = _clean_target(body.target_section, body.target_step_index)
+        sticker = planner.stickers.create(recipe_id, content, section, step_index)
+        return {"sticker": sticker}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+@app.patch("/api/stickers/{sticker_id}")
+def api_stickers_update(
+    sticker_id: int, body: StickerPatch, planner: Planner = Depends(get_planner)
+) -> dict:
+    try:
+        content = None
+        if body.content is not None:
+            content = body.content.strip()[:_STICKER_MAX]
+            if not content:
+                return {"error": "empty sticker"}
+        section, step_index = (None, None)
+        if body.set_target:
+            section, step_index = _clean_target(body.target_section, body.target_step_index)
+        sticker = planner.stickers.update(
+            sticker_id,
+            content=content,
+            set_target=body.set_target,
+            target_section=section,
+            target_step_index=step_index,
+        )
+        if sticker is None:
+            return {"error": "sticker not found"}
+        return {"sticker": sticker}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+@app.delete("/api/stickers/{sticker_id}")
+def api_stickers_delete(sticker_id: int, planner: Planner = Depends(get_planner)) -> dict:
+    try:
+        return {"ok": planner.stickers.delete(sticker_id)}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 

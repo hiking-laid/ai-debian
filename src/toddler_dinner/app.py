@@ -11,6 +11,7 @@ from toddler_dinner.persistence.repositories import (
     PgDinnerHistoryRepository,
     PgMenuRepository,
     PgRecipeRepository,
+    PgStickerRepository,
 )
 from toddler_dinner.providers.inventory_yaml import YamlInventoryProvider
 from toddler_dinner.providers.llm import build_llm_provider
@@ -36,6 +37,7 @@ def build_planner(
     recipes = PgRecipeRepository(session_factory)
     menus = PgMenuRepository(session_factory)
     history = PgDinnerHistoryRepository(session_factory)
+    stickers = PgStickerRepository(session_factory)
     llm = build_llm_provider(secrets)
     return Planner(
         profile=profile,
@@ -44,4 +46,5 @@ def build_planner(
         llm=llm,
         menus=menus,
         history=history,
+        stickers=stickers,
     )

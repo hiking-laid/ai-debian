@@ -15,19 +15,28 @@ from toddler_dinner.models import (
     NutritionFacts,
     Recipe,
     ShoppingList,
+    Sticker,
 )
-from toddler_dinner.persistence import DinnerHistoryRepository, MenuRepository, RecipeRepository
+from toddler_dinner.persistence import (
+    DinnerHistoryRepository,
+    MenuRepository,
+    RecipeRepository,
+    StickerRepository,
+)
 from toddler_dinner.persistence.orm import (
     DinnerHistoryORM,
     IngredientORM,
     MenuItemORM,
     MenuORM,
+    RecipeEquipmentORM,
     RecipeFoodGroupORM,
     RecipeHazardORM,
     RecipeNutritionORM,
     RecipeORM,
     RecipeStepORM,
+    RecipeStickerORM,
     RecipeTagORM,
+    RecipeTipORM,
     ShoppingItemORM,
     ShoppingListORM,
 )
@@ -48,7 +57,9 @@ def orm_to_recipe(row: RecipeORM) -> Recipe:
         id=row.id,
         title=row.title,
         ingredients=[Ingredient(name=i.name, quantity=i.quantity, unit=i.unit) for i in row.ingredients],
+        equipment=[e.text for e in row.equipment],
         steps=[s.text for s in row.steps],
+        tips=[t.text for t in row.tips],
         nutrition=nutrition,
         texture=row.texture,
         min_age_months=row.min_age_months,
@@ -74,6 +85,10 @@ def recipe_to_orm(recipe: Recipe) -> RecipeORM:
         for idx, ing in enumerate(recipe.ingredients)
     ]
     row.steps = [RecipeStepORM(position=idx, text=text) for idx, text in enumerate(recipe.steps)]
+    row.equipment = [
+        RecipeEquipmentORM(position=idx, text=text) for idx, text in enumerate(recipe.equipment)
+    ]
+    row.tips = [RecipeTipORM(position=idx, text=text) for idx, text in enumerate(recipe.tips)]
     if any(getattr(recipe.nutrition, f) is not None for f in _NUTRITION_FIELDS):
         row.nutrition = RecipeNutritionORM(
             **{f: getattr(recipe.nutrition, f) for f in _NUTRITION_FIELDS}
@@ -230,3 +245,103 @@ class PgDinnerHistoryRepository(DinnerHistoryRepository):
                     recipe = Recipe(title=row.title, ingredients=[], steps=[])
                 entries.append(HistoryEntry(served_on=row.served_on, recipe=recipe))
             return entries
+
+
+class PgStickerRepository(StickerRepository):
+    """CRUD for post-cook stickers. Translates step index <-> recipe_steps.id."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def _step_ids(self, s: Session, recipe_id: int) -> list[int]:
+        """Method step ids for a recipe, ordered by position (index -> id)."""
+        return list(
+            s.scalars(
+                select(RecipeStepORM.id)
+                .where(RecipeStepORM.recipe_id == recipe_id)
+                .order_by(RecipeStepORM.position)
+            ).all()
+        )
+
+    def _index_for_step_id(self, s: Session, recipe_id: int, step_id: int | None) -> int | None:
+        if step_id is None:
+            return None
+        ids = self._step_ids(s, recipe_id)
+        return ids.index(step_id) if step_id in ids else None
+
+    def _step_id_for_index(self, s: Session, recipe_id: int, index: int | None) -> int | None:
+        if index is None:
+            return None
+        ids = self._step_ids(s, recipe_id)
+        return ids[index] if 0 <= index < len(ids) else None
+
+    def _to_model(self, s: Session, row: RecipeStickerORM) -> Sticker:
+        return Sticker(
+            id=row.id,
+            recipe_id=row.recipe_id,
+            content=row.content,
+            target_section=row.target_section,
+            target_step_index=self._index_for_step_id(s, row.recipe_id, row.target_step_id),
+            created_at=row.created_at,
+        )
+
+    def list_for_recipe(self, recipe_id: int) -> list[Sticker]:
+        with self._sf() as s:
+            rows = s.scalars(
+                select(RecipeStickerORM)
+                .where(RecipeStickerORM.recipe_id == recipe_id)
+                .order_by(RecipeStickerORM.created_at, RecipeStickerORM.id)
+            ).all()
+            return [self._to_model(s, r) for r in rows]
+
+    def create(
+        self,
+        recipe_id: int,
+        content: str,
+        target_section: str | None = None,
+        target_step_index: int | None = None,
+    ) -> Sticker:
+        with self._sf() as s:
+            row = RecipeStickerORM(
+                recipe_id=recipe_id,
+                content=content,
+                target_section=target_section,
+                target_step_id=self._step_id_for_index(s, recipe_id, target_step_index),
+            )
+            s.add(row)
+            s.commit()
+            s.refresh(row)
+            return self._to_model(s, row)
+
+    def update(
+        self,
+        sticker_id: int,
+        *,
+        content: str | None = None,
+        set_target: bool = False,
+        target_section: str | None = None,
+        target_step_index: int | None = None,
+    ) -> Sticker | None:
+        with self._sf() as s:
+            row = s.get(RecipeStickerORM, sticker_id)
+            if row is None:
+                return None
+            if content is not None:
+                row.content = content
+            if set_target:
+                row.target_section = target_section
+                row.target_step_id = self._step_id_for_index(
+                    s, row.recipe_id, target_step_index
+                )
+            s.commit()
+            s.refresh(row)
+            return self._to_model(s, row)
+
+    def delete(self, sticker_id: int) -> bool:
+        with self._sf() as s:
+            row = s.get(RecipeStickerORM, sticker_id)
+            if row is None:
+                return False
+            s.delete(row)
+            s.commit()
+            return True

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from toddler_dinner.models import HistoryEntry, Menu, Recipe, ShoppingList, SupermarketSnapshot
+from toddler_dinner.models import HistoryEntry, Menu, Recipe, ShoppingList, Sticker, SupermarketSnapshot
 
 
 class RecipeRepository(ABC):
@@ -72,6 +72,40 @@ class DinnerHistoryRepository(ABC):
         ...
 
 
+class StickerRepository(ABC):
+    """Post-cook handwritten notes pinned to a recipe / section / Method step."""
+
+    @abstractmethod
+    def list_for_recipe(self, recipe_id: int) -> list[Sticker]:
+        ...
+
+    @abstractmethod
+    def create(
+        self,
+        recipe_id: int,
+        content: str,
+        target_section: str | None = None,
+        target_step_index: int | None = None,
+    ) -> Sticker:
+        ...
+
+    @abstractmethod
+    def update(
+        self,
+        sticker_id: int,
+        *,
+        content: str | None = None,
+        set_target: bool = False,
+        target_section: str | None = None,
+        target_step_index: int | None = None,
+    ) -> Sticker | None:
+        ...
+
+    @abstractmethod
+    def delete(self, sticker_id: int) -> bool:
+        ...
+
+
 class InMemoryRecipeRepository(RecipeRepository):
     def __init__(self, recipes: list[Recipe] | None = None) -> None:
         self._recipes = list(recipes or [])
@@ -105,3 +139,40 @@ class InMemoryRecipeRepository(RecipeRepository):
             return existing
         recipe.cooked = True
         return self.add_recipe(recipe)
+
+
+class InMemoryStickerRepository(StickerRepository):
+    """In-memory stickers for tests. Stores the step *index* directly (no id translation)."""
+
+    def __init__(self) -> None:
+        self._items: list[Sticker] = []
+        self._next_id = 1
+
+    def list_for_recipe(self, recipe_id: int) -> list[Sticker]:
+        return [s for s in self._items if s.recipe_id == recipe_id]
+
+    def create(self, recipe_id, content, target_section=None, target_step_index=None) -> Sticker:
+        s = Sticker(
+            id=self._next_id, recipe_id=recipe_id, content=content,
+            target_section=target_section, target_step_index=target_step_index,
+        )
+        self._next_id += 1
+        self._items.append(s)
+        return s
+
+    def update(self, sticker_id, *, content=None, set_target=False,
+               target_section=None, target_step_index=None) -> Sticker | None:
+        s = next((x for x in self._items if x.id == sticker_id), None)
+        if s is None:
+            return None
+        if content is not None:
+            s.content = content
+        if set_target:
+            s.target_section = target_section
+            s.target_step_index = target_step_index
+        return s
+
+    def delete(self, sticker_id) -> bool:
+        before = len(self._items)
+        self._items = [x for x in self._items if x.id != sticker_id]
+        return len(self._items) < before

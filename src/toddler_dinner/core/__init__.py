@@ -27,6 +27,7 @@ from toddler_dinner.persistence import (
     DinnerHistoryRepository,
     MenuRepository,
     RecipeRepository,
+    StickerRepository,
 )
 
 
@@ -148,6 +149,7 @@ class Planner:
         supermarket: SupermarketProvider | None = None,
         menus: MenuRepository | None = None,
         history: DinnerHistoryRepository | None = None,
+        stickers: StickerRepository | None = None,
     ) -> None:
         self.profile = profile
         self.inventory = inventory
@@ -156,6 +158,7 @@ class Planner:
         self.supermarket = supermarket
         self.menus = menus
         self.history = history
+        self.stickers = stickers
         # In-memory recent-dinner titles for variety when no history repo is wired (tests).
         self.recent_dinner_titles: list[str] = []
         # Variety steering for generation: recently suggested titles + a randomized protein

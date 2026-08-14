@@ -70,7 +70,7 @@ def test_tonight_cold_start_generates(planner):
     assert result.exit_code == 0
     assert "here's a fresh idea" in result.stdout
     assert "Fresh Bowl" in result.stdout
-    assert "Steps:" in result.stdout  # full cooking procedure
+    assert "Method:" in result.stdout  # full cooking procedure
 
 
 def test_tonight_fresh_generates_and_saves(planner):

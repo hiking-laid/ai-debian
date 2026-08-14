@@ -10,17 +10,25 @@ from toddler_dinner.models import Recipe
 
 
 def recipe_text(recipe: Recipe) -> str:
-    """Human-readable recipe: title + ingredients + numbered steps."""
+    """Human-readable recipe: title + ingredients + equipment + numbered method + tips."""
     lines = [recipe.title]
     if recipe.ingredients:
         lines += ["", "Ingredients:"]
         for ing in recipe.ingredients:
             qty = f"{ing.quantity:g} {ing.unit}".strip()
             lines.append(f"- {qty} {ing.name}".rstrip())
+    if recipe.equipment:
+        lines += ["", "Equipment:"]
+        for item in recipe.equipment:
+            lines.append(f"- {item}")
     if recipe.steps:
-        lines += ["", "Steps:"]
+        lines += ["", "Method:"]
         for i, step in enumerate(recipe.steps, 1):
             lines.append(f"{i}. {step}")
+    if recipe.tips:
+        lines += ["", "Tips:"]
+        for tip in recipe.tips:
+            lines.append(f"- {tip}")
     return "\n".join(lines)
 
 
