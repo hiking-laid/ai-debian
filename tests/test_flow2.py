@@ -132,3 +132,43 @@ def test_groceries_excludes_pantry_staples():
     gl = groceries_for(r, [])  # empty fridge
     names = [g.name for g in gl.items]
     assert names == ["chicken"]  # water/salt/oil filtered out
+
+
+# --- draw_from_cookbook (issue #13 button engine) ---------------------------
+
+def test_draw_fridge_aware_prefers_fewest_missing():
+    in_fridge = _recipe("Chicken Rice", [("chicken", 1, "ea"), ("rice", 1, "ea")])
+    needs_shop = _recipe("Beef Stew", [("beef", 1, "ea"), ("potato", 1, "ea")])
+    items = [InventoryItem(name="chicken", quantity=1, unit="ea"),
+             InventoryItem(name="rice", quantity=1, unit="ea")]
+    p = _planner([in_fridge, needs_shop], items)
+    # Fridge-aware random still always lands on the fully-stocked recipe (fewest-missing tier).
+    for _ in range(20):
+        d = p.draw_from_cookbook(fridge_aware=True)
+        assert d.recipe.title == "Chicken Rice"
+        assert d.missing == [] and d.repeat is False and d.empty is False
+
+
+def test_draw_wildcard_ignores_fridge_and_honours_exclude():
+    a = _recipe("Chicken Rice", [("chicken", 1, "ea"), ("rice", 1, "ea")])
+    b = _recipe("Beef Stew", [("beef", 1, "ea"), ("potato", 1, "ea")])
+    p = _planner([a, b], [InventoryItem(name="chicken", quantity=1, unit="ea")])
+    # Excluding the on-screen recipe -> the wildcard returns the other one.
+    for _ in range(20):
+        d = p.draw_from_cookbook(fridge_aware=False, exclude_titles=["Chicken Rice"])
+        assert d.recipe.title == "Beef Stew"
+
+
+def test_draw_case1_empty_cookbook():
+    p = _planner([], [])
+    d = p.draw_from_cookbook(fridge_aware=True)
+    assert d.recipe is None and d.empty is True
+
+
+def test_draw_case2_relaxes_variety_with_repeat_flag():
+    r = _recipe("Chicken Rice", [("chicken", 1, "ea"), ("rice", 1, "ea")])
+    p = _planner([r], [InventoryItem(name="chicken", quantity=1, unit="ea")])
+    p.record_served(r)  # only recipe is now within the variety window
+    d = p.draw_from_cookbook(fridge_aware=True)
+    assert d.recipe.title == "Chicken Rice"   # drawn anyway
+    assert d.repeat is True and d.empty is False

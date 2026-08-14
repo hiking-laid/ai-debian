@@ -66,9 +66,15 @@ class CookBody(BaseModel):
     on: date | None = None
 
 
-class AnotherBody(BaseModel):
-    mode: str = "tonight"   # 'tonight' | 'plan'
-    exclude: list[str] | None = None
+class FeelingLuckyBody(BaseModel):
+    mode: str = "tonight"          # 'tonight' | 'plan'
+    exclude: list[str] | None = None   # title(s) of the on-screen recipe to avoid re-drawing
+
+
+# Shown when the cookbook has nothing valid to draw (issue #13, Case 1).
+_EMPTY_COOKBOOK_MSG = (
+    "Your cookbook has no dinner to draw yet \u2014 tap \u201cNew Idea\u201d to generate a fresh recipe."
+)
 
 
 def _plan_payload(plan) -> dict:
@@ -81,34 +87,65 @@ def _plan_payload(plan) -> dict:
     }
 
 
+def _tonight_from_draw(draw) -> dict:
+    return {"recipe": draw.recipe, "source": "cookbook", "missing": draw.missing,
+            "repeat": draw.repeat}
+
+
 @app.post("/api/tonight")
 def api_tonight(planner: Planner = Depends(get_planner)) -> dict:
-    """DB-first suggestion; falls back to a fresh generated idea if nothing matches."""
+    """Draw tonight's dinner from the cookbook (fridge-aware random, variety from today)."""
     try:
-        r = planner.tonight()
-        if r.recipe:
-            return {"recipe": r.recipe, "source": "cookbook", "kind": r.kind, "missing": r.missing}
-        recipe = planner.another_idea()
-        return {"recipe": recipe, "source": "fresh", "kind": "none", "missing": []}
+        draw = planner.draw_from_cookbook(fridge_aware=True)
+        if draw.recipe is None:
+            return {"message": _EMPTY_COOKBOOK_MSG}
+        return _tonight_from_draw(draw)
     except Exception as e:  # noqa: BLE001 - return a friendly error, never a 500
         return {"error": str(e)}
 
 
-@app.post("/api/another-idea")
-def api_another(body: AnotherBody, planner: Planner = Depends(get_planner)) -> dict:
-    """Another option within the current mode (tonight idea, or another tomorrow plan)."""
+@app.post("/api/new-idea")
+def api_new_idea(planner: Planner = Depends(get_planner)) -> dict:
+    """Generate a brand-new recipe via the LLM (unsaved suggestion)."""
+    try:
+        return {"recipe": planner.another_idea(), "source": "fresh"}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+@app.post("/api/feeling-lucky")
+def api_feeling_lucky(body: FeelingLuckyBody, planner: Planner = Depends(get_planner)) -> dict:
+    """Wildcard: another random cookbook recipe (ignores the fridge), excluding the current one."""
     try:
         if body.mode == "plan":
-            return _plan_payload(planner.plan_tomorrow(use_llm=True))
-        return {"recipe": planner.another_idea(exclude=body.exclude), "source": "fresh"}
+            for_date = planner.today() + timedelta(days=1)
+            draw = planner.draw_from_cookbook(
+                for_date=for_date, fridge_aware=False, exclude_titles=body.exclude
+            )
+            if draw.recipe is None:
+                return {"message": _EMPTY_COOKBOOK_MSG}
+            payload = _plan_payload(planner.build_plan(draw.recipe, for_date))
+            payload["repeat"] = draw.repeat
+            return payload
+        draw = planner.draw_from_cookbook(fridge_aware=False, exclude_titles=body.exclude)
+        if draw.recipe is None:
+            return {"message": _EMPTY_COOKBOOK_MSG}
+        return _tonight_from_draw(draw)
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 
 
 @app.post("/api/plan-tomorrow")
 def api_plan(planner: Planner = Depends(get_planner)) -> dict:
+    """Draw tomorrow's dinner from the cookbook (fridge-aware random, variety from tomorrow)."""
     try:
-        return _plan_payload(planner.plan_tomorrow(use_llm=True))
+        for_date = planner.today() + timedelta(days=1)
+        draw = planner.draw_from_cookbook(for_date=for_date, fridge_aware=True)
+        if draw.recipe is None:
+            return {"message": _EMPTY_COOKBOOK_MSG}
+        payload = _plan_payload(planner.build_plan(draw.recipe, for_date))
+        payload["repeat"] = draw.repeat
+        return payload
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 

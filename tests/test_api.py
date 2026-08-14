@@ -73,10 +73,11 @@ def client(planner):
     server.app.dependency_overrides.clear()
 
 
-def test_tonight_cold_start_returns_fresh(client):
+def test_tonight_cold_start_returns_message(client):
+    # Empty cookbook -> Case 1: no auto-generate; nudge the user to "New Idea".
     r = client.post("/api/tonight").json()
-    assert r["source"] == "fresh"
-    assert r["recipe"]["title"].startswith("Fresh Dish")
+    assert "recipe" not in r
+    assert "message" in r
 
 
 def test_save_then_tonight_matches_cookbook(client, planner):
@@ -100,9 +101,12 @@ def test_cooked_then_history_and_variety(client):
     assert len(hist) == 1
     assert hist[0]["recipe"]["title"] == "Chicken Rice"
     assert hist[0]["recipe"]["ingredients"]
-    # variety: tonight must NOT re-suggest the just-cooked approved recipe -> falls back to fresh
+    # variety: the only approved recipe was cooked today, so the fresh pool is empty ->
+    # Case 2 relaxes the interval and re-draws it, flagged as a repeat (never silently LLMs).
     r = client.post("/api/tonight").json()
-    assert r["source"] == "fresh"
+    assert r["source"] == "cookbook"
+    assert r["recipe"]["title"] == "Chicken Rice"
+    assert r["repeat"] is True
 
 
 def test_cooked_twice_same_day_is_not_duplicated(client):
@@ -116,17 +120,44 @@ def test_cooked_twice_same_day_is_not_duplicated(client):
 
 
 def test_plan_tomorrow_payload(client):
+    recipe = _clean_recipe("Chicken Rice")
+    client.post("/api/recipe/save", json={"recipe": recipe.model_dump(mode="json")})
     r = client.post("/api/plan-tomorrow").json()
     assert r["source"] == "plan"
     assert r["recipe"]["title"]
     assert "for_date" in r and "groceries" in r
 
 
-def test_another_idea_modes(client):
-    tonight_mode = client.post("/api/another-idea", json={"mode": "tonight"}).json()
-    assert tonight_mode["source"] == "fresh"
-    plan_mode = client.post("/api/another-idea", json={"mode": "plan"}).json()
-    assert plan_mode["source"] == "plan"
+def test_plan_tomorrow_empty_returns_message(client):
+    # Empty cookbook -> Case 1 message, not an LLM fallback.
+    r = client.post("/api/plan-tomorrow").json()
+    assert "recipe" not in r and "message" in r
+
+
+def test_new_idea_generates_fresh(client):
+    r = client.post("/api/new-idea").json()
+    assert r["source"] == "fresh"
+    assert r["recipe"]["title"].startswith("Fresh Dish")
+
+
+def test_feeling_lucky_draws_other_cookbook_recipe(client):
+    for rc in (_clean_recipe("Chicken Rice"),
+               _clean_recipe("Beef Stew", ings=("beef", "potato"))):
+        client.post("/api/recipe/save", json={"recipe": rc.model_dump(mode="json")})
+    # tonight wildcard excludes the on-screen recipe -> returns the OTHER cookbook dinner
+    r = client.post("/api/feeling-lucky",
+                    json={"mode": "tonight", "exclude": ["Chicken Rice"]}).json()
+    assert r["source"] == "cookbook"
+    assert r["recipe"]["title"] == "Beef Stew"
+    # plan mode -> a plan payload
+    p = client.post("/api/feeling-lucky",
+                    json={"mode": "plan", "exclude": ["Chicken Rice"]}).json()
+    assert p["source"] == "plan"
+
+
+def test_feeling_lucky_empty_returns_message(client):
+    r = client.post("/api/feeling-lucky", json={"mode": "tonight"}).json()
+    assert "recipe" not in r and "message" in r
 
 
 def test_history_empty_initially(client):

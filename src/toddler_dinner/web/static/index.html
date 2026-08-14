@@ -177,7 +177,7 @@
 
   <div class="actions">
     <button class="primary" onclick="tonight()">Tonight's Dinner</button>
-    <button onclick="anotherIdea()">Another Idea</button>
+    <button onclick="newIdea()">New Idea</button>
     <button onclick="planTomorrow()">Plan Tomorrow</button>
   </div>
 
@@ -281,21 +281,23 @@ async function apiMethod(method, path, body){
 function render(d){
   document.querySelectorAll('.actions button').forEach(b=>b.disabled=false);
   if(d.error){ showError(d.error); return; }
+  if(!d.recipe && d.message){ current=null; showInfo(d.message); return; }   // Case 1: empty cookbook
   current = d.recipe;
   const isPlan = d.source==='plan';
   let header='';
   const lines=[];
   if(d.note) lines.push(esc(d.note));
+  if(d.repeat) lines.push("You’ve cooked everything recently — here’s a repeat.");
   if(isPlan){
     const buy = (d.groceries||[]).map(g=>g.name);
     lines.push(`For ${esc(d.for_date)} · to buy: <b>${buy.length?esc(buy.join(', ')):'nothing — all in the fridge'}</b>`);
-  } else if(d.source==='cookbook' && d.kind==='partial' && (d.missing||[]).length){
+  } else if(d.source==='cookbook' && (d.missing||[]).length){
     lines.push(`From your cookbook · you're missing: <b>${esc(d.missing.join(', '))}</b>`);
   }
   header = lines.map(l=>`<p class="empty">${l}</p>`).join('');
   const btns = isPlan
-    ? `<button onclick="save()">Save to Cookbook</button><button onclick="anotherIdea()">Another</button>`
-    : `<button class="primary" onclick="cooked()">Cooked It</button><button onclick="save()">Save to Cookbook</button><button onclick="anotherIdea()">Another</button>`;
+    ? `<button onclick="save()">Save to Cookbook</button><button onclick="feelingLucky()">Feeling Lucky</button>`
+    : `<button class="primary" onclick="cooked()">Cooked It</button><button onclick="save()">Save to Cookbook</button><button onclick="feelingLucky()">Feeling Lucky</button>`;
   document.getElementById('suggestion').innerHTML = header + recipeCardHTML(current, btns);
   // Play the unfold reveal, then smoothly bring the card to the centre of the viewport.
   const card = document.querySelector('#suggestion .card');
@@ -308,8 +310,9 @@ function render(d){
 
 // ---- actions ---------------------------------------------------------------
 async function tonight(){ mode='tonight'; setBusy(true); render(await api('/api/tonight', {})); }
-async function anotherIdea(){ setBusy(true); render(await api('/api/another-idea', {mode, exclude:null})); }
+async function newIdea(){ mode='tonight'; setBusy(true); render(await api('/api/new-idea', {})); }
 async function planTomorrow(){ mode='plan'; setBusy(true); render(await api('/api/plan-tomorrow', {})); }
+async function feelingLucky(){ setBusy(true); render(await api('/api/feeling-lucky', {mode, exclude: current ? [current.title] : null})); }
 
 async function save(){
   if(!current) return;
@@ -365,7 +368,7 @@ function openHistory(i){
   current = e.recipe; mode = 'tonight';
   const btns = `<button class="primary" onclick="cooked()">Cooked It</button>`
              + `<button onclick="save()">Save to Cookbook</button>`
-             + `<button onclick="anotherIdea()">Another</button>`;
+             + `<button onclick="feelingLucky()">Feeling Lucky</button>`;
   const header = `<p class="empty">From your history · ${esc(dayLabel(e.served_on))}</p>`;
   const sug = document.getElementById('suggestion');
   sug.innerHTML = header + recipeCardHTML(current, btns);

@@ -40,6 +40,21 @@ class MatchResult:
     kind: str  # "exact" | "partial" | "none"
 
 
+@dataclass
+class DrawResult:
+    """Outcome of drawing an existing dinner from the cookbook (issue #13 buttons).
+
+    empty  -> Case 1: no valid recipe at all (caller should point the user at 'New Idea').
+    repeat -> Case 2: valid recipes existed but all were within the variety window, so the
+              interval was relaxed and a recent dinner was drawn anyway.
+    """
+
+    recipe: Recipe | None
+    missing: list[str] = field(default_factory=list)
+    repeat: bool = False
+    empty: bool = False
+
+
 def _ingredient_overlap(recipe: Recipe, have: set[str]) -> tuple[int, list[str]]:
     needed = {ing.name.lower() for ing in recipe.ingredients}
     # Pantry staples (water, salt, oil, ...) are assumed on hand -> never counted as missing.
@@ -211,6 +226,49 @@ class Planner:
         recent = self._recent_cooked_titles()
         pool = [r for r in self.recipes.approved_recipes() if r.title.lower() not in recent]
         return match_from_inventory(pool, items)
+
+    def draw_from_cookbook(
+        self,
+        *,
+        for_date: date | None = None,
+        fridge_aware: bool = True,
+        exclude_titles: list[str] | None = None,
+    ) -> DrawResult:
+        """Draw an existing dinner from the cookbook (issue #13).
+
+        fridge_aware=True  -> random among the recipes needing the fewest groceries (Tonight /
+                              Plan Tomorrow). fridge_aware=False -> pure random 'Feeling Lucky'
+                              wildcard, ignoring the fridge. Variety is measured from `for_date`,
+                              so planning tomorrow naturally excludes today's dinner.
+        """
+        for_date = for_date or self.today()
+        ex = {t.lower() for t in (exclude_titles or [])}
+        valid = [
+            r
+            for r in self.recipes.approved_recipes()
+            if r.title.lower() not in ex and validate_recipe(r, self.profile, for_date).ok
+        ]
+        if not valid:
+            return DrawResult(recipe=None, empty=True)          # Case 1
+
+        recent = self._recent_cooked_titles(for_date)
+        pool = [r for r in valid if r.title.lower() not in recent]
+        repeat = False
+        if not pool:
+            pool, repeat = valid, True                          # Case 2: relax the interval
+
+        items = self.inventory.list_items()
+        if fridge_aware:
+            # Random tie-break among the recipes with the best fridge overlap (fewest missing).
+            tiers: dict[int, list[tuple[Recipe, list[str]]]] = {}
+            for r in pool:
+                miss = missing_ingredients(r, items)
+                tiers.setdefault(len(miss), []).append((r, miss))
+            recipe, missing = random.choice(tiers[min(tiers)])
+        else:
+            recipe = random.choice(pool)
+            missing = missing_ingredients(recipe, items)
+        return DrawResult(recipe=recipe, missing=missing, repeat=repeat)
 
     def another_idea(self, exclude: list[str] | None = None) -> Recipe:
         """Generate a fresh recipe via LLM, validate, and (on approval) store it.
@@ -390,6 +448,21 @@ class Planner:
         # Persist the plan only for an approved (already-saved) recipe. A freshly generated
         # recipe is just a suggestion — it is NOT stored until you approve it (via 'save' /
         # another-idea). So no unapproved recipes ever land in the DB.
+        if self.menus is not None and recipe.id is not None:
+            menu = self.menus.save_menu(menu)
+            groceries.menu_id = menu.id
+            groceries = self.menus.save_shopping_list(groceries)
+        return PlanResult(menu=menu, groceries=groceries, already_have=already_have)
+
+    def build_plan(
+        self, recipe: Recipe, for_date: date, items: list[InventoryItem] | None = None
+    ) -> PlanResult:
+        """Assemble (and, for a saved recipe, persist) a single-dinner plan + its groceries."""
+        items = items if items is not None else self.inventory.list_items()
+        have = _have_names(items)
+        already_have = [ing.name for ing in recipe.ingredients if _in_fridge(ing.name, have)]
+        menu = Menu(for_date=for_date, items=[MenuItem(recipe=recipe)])
+        groceries = groceries_for(recipe, items)
         if self.menus is not None and recipe.id is not None:
             menu = self.menus.save_menu(menu)
             groceries.menu_id = menu.id
