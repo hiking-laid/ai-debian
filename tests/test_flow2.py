@@ -157,6 +157,9 @@ def test_draw_wildcard_ignores_fridge_and_honours_exclude():
     for _ in range(20):
         d = p.draw_from_cookbook(fridge_aware=False, exclude_titles=["Chicken Rice"])
         assert d.recipe.title == "Beef Stew"
+        # missing must be a list of name STRINGS, not Ingredient objects (issue #17).
+        assert d.missing == ["beef", "potato"]
+        assert all(isinstance(m, str) for m in d.missing)
 
 
 def test_draw_case1_empty_cookbook():

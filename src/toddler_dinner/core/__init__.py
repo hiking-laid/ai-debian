@@ -262,12 +262,12 @@ class Planner:
             # Random tie-break among the recipes with the best fridge overlap (fewest missing).
             tiers: dict[int, list[tuple[Recipe, list[str]]]] = {}
             for r in pool:
-                miss = missing_ingredients(r, items)
+                miss = [i.name for i in missing_ingredients(r, items)]
                 tiers.setdefault(len(miss), []).append((r, miss))
             recipe, missing = random.choice(tiers[min(tiers)])
         else:
             recipe = random.choice(pool)
-            missing = missing_ingredients(recipe, items)
+            missing = [i.name for i in missing_ingredients(recipe, items)]
         return DrawResult(recipe=recipe, missing=missing, repeat=repeat)
 
     def another_idea(self, exclude: list[str] | None = None) -> Recipe:
