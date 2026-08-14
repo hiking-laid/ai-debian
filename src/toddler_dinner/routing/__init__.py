@@ -35,8 +35,13 @@ _FAST_PATH: dict[Action, tuple[str, ...]] = {
 # (e.g. "add broccoli to tonight's dinner" must edit the card, not just re-suggest tonight).
 _CUSTOMIZE_HINTS: tuple[str, ...] = (
     "add ", "include", "swap", "replace", "instead", "without", "remove", "extra ",
-    "more ", "less ", "make it", "dairy-free", "dairy free", "gluten-free", "gluten free",
-    "use my", "here's my", "here is my",
+    "more ", "less ", "make it", "make a ", "make me", "dairy-free", "dairy free",
+    "gluten-free", "gluten free", "use my", "here's my", "here is my",
+    # Content-specification signals: the parent is naming a dish/ingredients (e.g. "another
+    # recipe WITH stewed beef and pasta"), which must reach the LLM as a recipe request rather
+    # than being hijacked by the "another"/"different" navigation fast path.
+    "with ", "using ", "featuring", "change to", "i want", "i'd like", "in the mood",
+    "feel like", "craving",
 )
 
 # Few-shot examples steer the LLM classifier and show the params it may extract.
@@ -57,6 +62,10 @@ _FEWSHOT: list[tuple[str, dict]] = [
                                         "target": "today"}}),
     ("swap the chicken for tofu and add spinach",
      {"action": "customize", "params": {"include": ["tofu", "spinach"], "exclude": ["chicken"]}}),
+    ("change to another recipe with stewed beef and pasta",
+     {"action": "customize", "params": {"include": ["stewed beef", "pasta"], "fresh": True}}),
+    ("I want a beef and pasta dinner instead",
+     {"action": "customize", "params": {"include": ["beef", "pasta"], "fresh": True}}),
     ("here is my recipe: chicken and kumara mash, use it for tomorrow",
      {"action": "customize", "params": {"target": "tomorrow"}}),
     ("asdfghjkl", {"action": None, "params": {}}),
@@ -70,6 +79,9 @@ _SYSTEM = (
     "change the style, make it dairy-free, or paste their own recipe). Optionally extract params: "
     "`include` (list of foods that must appear), `exclude` (list of foods to avoid), "
     "`target` ('today' or 'tomorrow'), `fresh` (bool, wants a brand-new idea), `date` (ISO date). "
+    "Set `fresh: true` when the parent wants a brand-new or DIFFERENT dish rather than an edit of "
+    "the current one (e.g. 'change to another recipe with beef and pasta' -> customize, "
+    "include [beef, pasta], fresh true). "
     "If the text is gibberish or not about dinner, reply with action null. "
     'Reply with ONLY a JSON object: {"action": <action|null>, "params": {...}}.'
 )

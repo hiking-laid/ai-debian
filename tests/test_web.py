@@ -155,3 +155,30 @@ def test_chat_customize_guardrail_rejection_keeps_card():
                               json={"message": "add honey", "recipe": base, "mode": "tonight"}).json()
     assert "couldn't do that safely" in d["message"].lower()
     assert d["recipe"]["title"] == "Safe Dish"        # original card kept, not the unsafe one
+
+
+# --- issue #16: chatbox content must reach the LLM, not be hijacked/ignored --
+
+def test_chat_change_to_recipe_with_ingredients_reaches_llm_unanchored():
+    """'change to another recipe with stewed beef and pasta' must customize (content honoured),
+    not fall through to a random another_idea; and fresh=True must not anchor it to the card."""
+    captured: dict = {}
+
+    class CapLLM(_LLM):
+        def generate_recipe(self, prompt):
+            captured["prompt"] = prompt
+            return _clean_recipe("Beef Pasta Bake", ings=("beef", "pasta"))
+
+    planner = _make_planner(CapLLM(action="customize",
+                                   params={"include": ["stewed beef", "pasta"], "fresh": True}))
+    base = _clean_recipe("Steamed Fish", ings=("hoki", "kumara")).model_dump(mode="json")
+    d = _client(planner).post(
+        "/api/chat",
+        json={"message": "change to another recipe with stewed beef and pasta",
+              "recipe": base, "mode": "tonight"},
+    ).json()
+    assert d["recipe"]["title"] == "Beef Pasta Bake"
+    assert d["note"] == "Including stewed beef, pasta"
+    # the parent's own words reached the model, and it was NOT anchored to the fish card
+    assert "stewed beef and pasta" in captured["prompt"]
+    assert "Steamed Fish" not in captured["prompt"]

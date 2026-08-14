@@ -90,6 +90,21 @@ def test_edit_signal_suppresses_navigation_fast_path():
     assert route("make tonight's dinner dairy-free", llm=llm).action == Action.CUSTOMIZE
 
 
+def test_content_request_with_another_is_not_hijacked_to_another_idea():
+    # Issue #16: "another" would fast-path to ANOTHER_IDEA and drop the message; the "with"
+    # content signal must suppress the fast path so the request reaches customize.
+    plain = route("give me another idea")
+    assert plain.action == Action.ANOTHER_IDEA and plain.via == "fast_path"
+
+    llm = FakeLLM({"action": "customize",
+                   "params": {"include": ["stewed beef", "pasta"], "fresh": True}})
+    res = route("change to another recipe with stewed beef and pasta", llm=llm)
+    assert res.via == "llm"                      # NOT fast_path
+    assert res.action == Action.CUSTOMIZE
+    assert res.params.get("include") == ["stewed beef", "pasta"]
+    assert res.params.get("fresh") is True
+
+
 def test_llm_null_action_is_unmatched():
     llm = FakeLLM({"action": None, "params": {}})
     result = route("asdfghjkl", llm=llm)

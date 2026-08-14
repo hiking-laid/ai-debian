@@ -302,7 +302,9 @@ def api_chat(req: ChatRequest, planner: Planner = Depends(get_planner)) -> dict:
             try:
                 recipe = planner.customize(
                     instructions=req.message,
-                    base=req.recipe,
+                    # 'fresh' -> the parent wants a NEW/different dish, not an edit of the card,
+                    # so don't anchor the LLM to the current recipe (issue #16).
+                    base=None if params.get("fresh") else req.recipe,
                     include=params.get("include"),
                     exclude=exclude,
                     on=(planner.today() + timedelta(days=1)) if mode == "plan" else None,
