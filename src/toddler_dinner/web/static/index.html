@@ -203,18 +203,55 @@ let mode = 'tonight';   // 'tonight' | 'plan'
 let current = null;     // recipe shown in the suggestion card
 let histEntries = [];
 
-// ---- deterministic hero: colour from title, emoji from main ingredient -----
-const HERO = [["chicken","\uD83C\uDF57"],["beef","\uD83E\uDD69"],["lamb","\uD83C\uDF56"],
-  ["pork","\uD83E\uDD53"],["bacon","\uD83E\uDD53"],["salmon","\uD83D\uDC1F"],["tuna","\uD83D\uDC1F"],
-  ["hoki","\uD83D\uDC1F"],["fish","\uD83D\uDC1F"],["prawn","\uD83E\uDD90"],["shrimp","\uD83E\uDD90"],
-  ["tofu","\uD83E\uDDC8"],["lentil","\uD83E\uDD58"],["chickpea","\uD83E\uDED8"],["bean","\uD83E\uDED8"],
-  ["egg","\uD83C\uDF73"]];
+// ---- deterministic hero: colour from the title, emoji from the DISH ---------
+// Ordered priority list (first match wins). We match the TITLE first (it names the dish), then
+// fall back to ingredients/tags. Ordering matters: specific bakes (pancake/muffin) and proteins
+// come before a generic "cake", so "Salmon Fish Cakes" -> fish but "Orange Yogurt Cake" -> cake.
+const HERO = [
+  // baked goods & desserts (these name the dish; specific first)
+  ["pancake","🥞"],["hotcake","🥞"],["pikelet","🥞"],["waffle","🧇"],
+  ["cupcake","🧁"],["muffin","🧁"],["cheesecake","🍰"],["cookie","🍪"],["biscuit","🍪"],
+  ["brownie","🍫"],["pudding","🍮"],["custard","🍮"],["doughnut","🍩"],["donut","🍩"],
+  ["scone","🍞"],["smoothie","🥤"],
+  ["eggplant","🍆"],["aubergine","🍆"],
+  // proteins / fish (beat a generic "cake" so savoury cakes aren't desserts)
+  ["chicken","🍗"],["nugget","🍗"],["beef","🥩"],["steak","🥩"],["lamb","🍖"],
+  ["pork","🥓"],["bacon","🥓"],["sausage","🌭"],["salmon","🐟"],["tuna","🐟"],
+  ["hoki","🐟"],["cod","🐟"],["fish","🐟"],["prawn","🦐"],["shrimp","🦐"],
+  ["fritter","🧆"],["rissole","🧆"],["meatball","🧆"],["patty","🧆"],["dumpling","🥟"],
+  ["potato","🥔"],["kumara","🍠"],["pumpkin","🎃"],
+  // generic cake (dessert) — only reached when it isn't a fish/potato/etc. cake
+  ["cake","🍰"],
+  // composed dishes
+  ["soup","🍲"],["broth","🍲"],["stew","🍲"],["casserole","🍲"],["hotpot","🍲"],
+  ["curry","🍛"],["dahl","🍛"],["dhal","🍛"],
+  ["risotto","🍚"],["pilaf","🍚"],["paella","🥘"],["fried rice","🍚"],["rice","🍚"],
+  ["spaghetti","🍝"],["macaroni","🍝"],["lasagne","🍝"],["lasagna","🍝"],["pasta","🍝"],
+  ["noodle","🍜"],["ramen","🍜"],["pizza","🍕"],["quiche","🥧"],["pie","🥧"],
+  ["sandwich","🥪"],["wrap","🌯"],["taco","🌮"],["toast","🍞"],["bread","🍞"],
+  ["porridge","🥣"],["oatmeal","🥣"],["oat","🥣"],["cereal","🥣"],["yoghurt","🥣"],["yogurt","🥣"],
+  ["omelette","🍳"],["omelet","🍳"],["frittata","🍳"],["scramble","🍳"],
+  // plant proteins
+  ["tofu","🧈"],["tempeh","🧈"],["lentil","🥘"],["chickpea","🫘"],["bean","🫘"],["peas","🫙"],
+  // egg (late, so it never hijacks a cake/bake)
+  ["egg","🍳"],
+  // veg & fruit
+  ["broccoli","🥦"],["cauliflower","🥦"],["carrot","🥕"],["spinach","🥬"],["corn","🌽"],
+  ["tomato","🍅"],["mushroom","🍄"],["avocado","🥑"],
+  ["banana","🍌"],["apple","🍎"],["pear","🍐"],["orange","🍊"],["mango","🥭"],
+  ["blueberry","🫐"],["berry","🫐"],
+];
 function heroFor(r){
   let h=0; for(const c of (r.title||"")) h=(h*31+c.charCodeAt(0))>>>0;
   const hue1=h%360, hue2=(hue1+40)%360;
-  const hay = ((r.tags||[]).join(" ")+" "+(r.ingredients||[]).map(i=>i.name).join(" ")).toLowerCase();
-  let emoji="\uD83C\uDF72";
-  for(const [k,e] of HERO){ if(hay.includes(k)){ emoji=e; break; } }
+  const title=(r.title||"").toLowerCase();
+  const rest=((r.tags||[]).join(" ")+" "+(r.ingredients||[]).map(i=>i.name).join(" ")).toLowerCase();
+  let emoji="🍲";
+  // Match the title first (it names the dish); only then fall back to ingredients/tags.
+  for(const src of [title, rest]){
+    const hit = HERO.find(([k])=>src.includes(k));
+    if(hit){ emoji=hit[1]; break; }
+  }
   return `<div class="hero" style="background:linear-gradient(135deg,hsl(${hue1},34%,82%),hsl(${hue2},38%,68%))"><span>${emoji}</span></div>`;
 }
 
