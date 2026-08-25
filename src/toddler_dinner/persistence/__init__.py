@@ -8,7 +8,17 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from toddler_dinner.models import HistoryEntry, Menu, Recipe, ShoppingList, Sticker, SupermarketSnapshot
+from toddler_dinner.interfaces import InventoryProvider
+from toddler_dinner.models import (
+    HistoryEntry,
+    InventoryItem,
+    Menu,
+    Recipe,
+    ShoppingList,
+    StockStatus,
+    Sticker,
+    SupermarketSnapshot,
+)
 
 
 class RecipeRepository(ABC):
@@ -69,6 +79,27 @@ class DinnerHistoryRepository(ABC):
     @abstractmethod
     def recent(self, days: int, on=None) -> list[HistoryEntry]:
         """Recent cooked dinners (most recent first) with their full recipes."""
+        ...
+
+
+class InventoryRepository(InventoryProvider):
+    """Catalog of stocked foods. Extends the read-only `InventoryProvider` (`list_items`)
+    with the writes the DB catalog needs (upsert_many / set-status / delete)."""
+
+    @abstractmethod
+    def upsert_many(self, items: list[InventoryItem]) -> int:
+        """The editing UI's atomic **Save**: add new items and update existing ones as one unit
+        (a single transaction for DB adapters). Returns the number of items inserted or updated."""
+        ...
+
+    @abstractmethod
+    def set_status(self, name: str, status: StockStatus) -> InventoryItem | None:
+        """Set a food's stock status; returns None if the food isn't in the catalog."""
+        ...
+
+    @abstractmethod
+    def delete(self, name: str) -> bool:
+        """Remove a food from the catalog. Returns True if a row was removed."""
         ...
 
 
@@ -176,3 +207,41 @@ class InMemoryStickerRepository(StickerRepository):
         before = len(self._items)
         self._items = [x for x in self._items if x.id != sticker_id]
         return len(self._items) < before
+
+
+class InMemoryInventoryRepository(InventoryRepository):
+    """In-memory inventory catalog for tests. Dedup by (case-insensitive) name."""
+
+    def __init__(self, items: list[InventoryItem] | None = None) -> None:
+        self._items: list[InventoryItem] = list(items or [])
+
+    def list_items(self) -> list[InventoryItem]:
+        return list(self._items)
+
+    def _find(self, name: str) -> InventoryItem | None:
+        n = name.lower()
+        return next((i for i in self._items if i.name.lower() == n), None)
+
+    def upsert_many(self, items: list[InventoryItem]) -> int:
+        for item in items:
+            existing = self._find(item.name)
+            if existing is None:
+                self._items.append(item)
+            else:
+                for field in ("status", "quantity", "unit", "best_before", "category", "opened", "location"):
+                    setattr(existing, field, getattr(item, field))
+        return len(items)
+
+    def set_status(self, name: str, status: StockStatus) -> InventoryItem | None:
+        existing = self._find(name)
+        if existing is None:
+            return None
+        existing.status = status
+        return existing
+
+    def delete(self, name: str) -> bool:
+        existing = self._find(name)
+        if existing is None:
+            return False
+        self._items.remove(existing)
+        return True

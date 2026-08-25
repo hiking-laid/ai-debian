@@ -31,13 +31,13 @@
 | 4 | Nutrition source | **NZ MoH / NHMRC** toddler guidance | Local relevance; portion/food-group based |
 | 5 | Portion basis | Driven by **actual weight + age** | Sidesteps ethnic growth-curve debate; needs scale with body weight |
 | 6 | Nutrition model | Hard safety rules + soft food-group targets; dinner ≈ ⅓ daily | Safety is deterministic; balance is portion-based |
-| 7 | Fridge input | Manual **YAML file** behind `InventoryProvider` | Zero friction; swappable to photo/barcode later |
+| 7 | Fridge input | Manual **catalog** behind `InventoryProvider`; coarse per-item **status** (have/low/none), not quantities | Matching is name-presence; exact counts are effort nobody maintains |
 | 8 | Supermarket data | **Deferred to future versions.** v1 outputs a groceries list only | Live scraping blocked by Cloudflare/anti-bot on Foodstuffs sites; not worth the fragility now |
 | 9 | Shopping output | Flow 2 produces a **groceries list** (needed items − fridge), no live pricing/availability | User finds items/specials in-store themselves |
 | 10 | ~~Snapshot reuse~~ | N/A in v1 (no scraping) | Revisit with future supermarket integration |
 | 11 | Interface | CLI + **hybrid skill routing** + simple **chat web UI** | Flexible phrasing, scriptable core, minimal UI |
 | 12 | LLM | Hosted API behind `LLMProvider`, key via env/config | Swappable to NAS Ollama later |
-| 13 | Persistence | **Postgres (NAS)** + config file + inventory file | Reuse existing infra; right tool per data type |
+| 13 | Persistence | **Postgres (NAS)** + config file (inventory is a Postgres table) | Reuse existing infra; right tool per data type |
 | 14 | Language | **Python** | User efficiency; strong Playwright/LLM/Postgres support |
 | 15 | Packaging | Single container + thin compose | One-command startup; no browser needed in v1 |
 | 16 | Exclusions | **Three-tier**: allergies + dietary = hard, dislikes = soft | Safety-critical vs flexible |
@@ -61,7 +61,7 @@ Core is a set of **callable actions** ("skills"), reachable three ways:
                      └────┬───────────┬──────────┬─────────┬────┘
                           │           │          │         │
                  InventoryProvider  RecipeRepo  Validator  LLMProvider
-                  (YAML file)       (Postgres)  (rules)    (hosted→Ollama)
+                  (Postgres)        (Postgres)  (rules)    (hosted→Ollama)
                                         │
                                    PostgreSQL (NAS)
 ```
@@ -71,7 +71,7 @@ Core is a set of **callable actions** ("skills"), reachable three ways:
 > as a placeholder for that future work.
 
 ### Provider interfaces (seams for later swaps)
-- `InventoryProvider` — v1: YAML file. Later: photo/barcode/tracked (Postgres).
+- `InventoryProvider` — v1: Postgres catalog (per-item have/low/none). Later: photo/barcode input UI.
 - `SupermarketProvider` — **placeholder seam; no v1 implementation** (see §10 future versions).
 - `LLMProvider` — v1: hosted API (Copilot/OpenAI/Anthropic). Later: NAS Ollama.
 - `RecipeRepository` — Postgres-backed store of validated recipes.
@@ -79,7 +79,7 @@ Core is a set of **callable actions** ("skills"), reachable three ways:
 ## 4. Flows
 
 ### Flow 1 — Tonight's dinner (fast, offline, no browser)
-1. Read current inventory (YAML file).
+1. Read current inventory (Postgres catalog).
 2. **Exact/strong DB match** → serve.
 3. Else **partial match**: rank DB recipes by ingredient overlap; show closest + *what's missing*.
 4. Else **no viable match** → LLM generates a recipe from available items → **Validator** checks
@@ -133,8 +133,23 @@ veg), each with a single **Cooked It Today** to re-record it. Generative leftove
 > windows) use `household.timezone`. Stored audit timestamps (`created_at`, `generated_at`) stay
 > in UTC (store UTC, display local).
 
-### Inventory (YAML file, human-maintained)
-Per item: `name`, `quantity`, `unit`, `best_before`, `category`, `opened?`, `location` (fridge/shelf).
+### Inventory (catalog of stocked foods)
+A persistent **catalog** of foods the household stocks, each carrying a coarse stock **`status`:
+`have` / `low` / `none`** (not numeric quantity). Stored in Postgres (`inventory_items`, created by
+an Alembic migration). On **initial deployment only** (empty table) the catalog is seeded from
+`data/inventory.seed.yaml` — every food at `status = none` — to save typing the whole list in;
+after that the DB is the source of truth and the file isn't re-read. A **future input UI** is how
+the user flips statuses (have/low/none). Items stay listed even when `none`, so gaps are
+visible and restockable; a genuinely new food is a rare manual add.
+Per item: `name`, `category`, `location` (fridge/shelf/freezer), `status`, `best_before?`
+(display-only), and optional unused `quantity`/`unit` (kept nullable for reversibility).
+
+> **Why status, not quantity:** the matcher and groceries key off item **name** presence, never
+> quantity; the only quantity consumer was a soft LLM prompt hint. Tracking exact counts is effort
+> nobody maintains, so v1 tracks a coarse status instead. **Status → behaviour:** `have` = on-hand,
+> may be the main ingredient; `low` = usable but not the main ingredient, never auto-bought;
+> `none` = not on-hand, added to the buy list if a chosen recipe needs it (staples exempt).
+> `best_before` is recorded for the user to eyeball; nothing automated reads it.
 
 ### PostgreSQL (NAS)
 - `recipes`: ingredients+quantities, equipment, method steps, tips, per-serving nutrition,
@@ -279,10 +294,21 @@ Table shopping_items {
 }
 
 Table dinner_history {
-  id int [pk, increment]
-  recipe_id int [ref: > recipes.id, null]
+  recipe_id int [pk, ref: > recipes.id, not null] // composite PK part; ON DELETE CASCADE
+  served_on date [pk] // composite PK part (household timezone)
   title varchar(200)
-  served_on date
+}
+
+Table inventory_items {
+  id int [pk, increment]
+  name varchar(120) [unique] // catalog key; matching is name-presence
+  status varchar(10) // have | low | none
+  quantity float [null, note: 'optional, unused by matching/groceries']
+  unit varchar(40) [null, note: 'optional, unused']
+  best_before date [null, note: 'display-only']
+  category varchar(30) [null]
+  opened boolean
+  location varchar(20) // fridge | shelf | freezer
 }
 ```
 
@@ -332,7 +358,7 @@ server-side session state, no disambiguation.
 - **Single app container** (plain Python base — no browser needed in v1).
 - **Postgres external** on the NAS; connect via DSN in env/config.
 - **docker-compose.yml** for one app service: env file, web port mapping, volume mount for
-  config + inventory files (edit without rebuild).
+  config files (edit without rebuild).
 
 ### Database initialization
 

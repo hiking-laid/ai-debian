@@ -21,7 +21,6 @@ venv/
 # Secrets & local runtime data (provided at runtime via env_file / volumes)
 .env
 config/profile.yaml
-data/inventory.yaml
 data/exports/
 
 # Tests aren't needed in the runtime image

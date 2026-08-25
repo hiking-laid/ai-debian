@@ -18,6 +18,12 @@ class StorageLocation(str, Enum):
     FREEZER = "freezer"
 
 
+class StockStatus(str, Enum):
+    HAVE = "have"    # on hand; may be the main ingredient
+    LOW = "low"      # still usable, but not as the main ingredient; never auto-bought
+    NONE = "none"    # out; bought if a chosen recipe needs it (staples exempt)
+
+
 class FoodGroup(str, Enum):
     VEGETABLES = "vegetables"
     FRUIT = "fruit"
@@ -27,12 +33,13 @@ class FoodGroup(str, Enum):
 
 
 class InventoryItem(BaseModel):
-    """A single item the household currently has. Human-maintained (YAML in v1)."""
+    """A food the household stocks, with a coarse stock status. Human-maintained (YAML in v1)."""
 
     name: str
-    quantity: float
-    unit: str
-    best_before: date | None = None
+    status: StockStatus = StockStatus.HAVE
+    quantity: float | None = None  # optional, unused by matching/groceries; kept for reversibility
+    unit: str | None = None
+    best_before: date | None = None  # display-only; nothing automated reads it
     category: str | None = None
     opened: bool = False
     location: StorageLocation = StorageLocation.FRIDGE

@@ -1,0 +1,82 @@
+# Inventory seed — loaded into the `inventory_items` table on INITIAL DEPLOYMENT only
+# (i.e. when the catalog is empty). After that, the database is the source of truth and this
+# file is not re-read; a future input UI is how the household edits stock.
+#
+# Every item starts at status "none" (nothing assumed on hand) so the first thing you do is
+# mark what you actually have. This just lifts the workload of typing the whole catalog in.
+#   status:   have | low | none   (seed ships everything as "none")
+#     have -> on hand; may be the main ingredient of a dinner
+#     low  -> still usable, but not as the main ingredient; never auto-added to the shopping list
+#     none -> out of stock; bought if a chosen recipe needs it (pantry staples exempt)
+#   location: fridge | shelf | freezer
+#   best_before: optional, display-only — glance at it to use things before they spoil
+# quantity/unit are intentionally omitted (unused); add them back per-item only if you want.
+
+# --- Proteins ---------------------------------------------------------------
+- {name: "chicken thigh", category: "protein", location: "fridge", status: "none"}
+- {name: "chicken breast", category: "protein", location: "freezer", status: "none"}
+- {name: "beef mince", category: "protein", location: "freezer", status: "none"}
+- {name: "lamb (diced)", category: "protein", location: "freezer", status: "none"}
+- {name: "pork mince", category: "protein", location: "freezer", status: "none"}
+- {name: "salmon fillet", category: "protein", location: "fridge", status: "none"}
+- {name: "hoki fillet", category: "protein", location: "freezer", status: "none"}
+- {name: "eggs", category: "protein", location: "fridge", status: "none"}
+- {name: "canned tuna", category: "protein", location: "shelf", status: "none"}
+- {name: "tofu (firm)", category: "protein", location: "fridge", status: "none"}
+
+# --- Vegetables -------------------------------------------------------------
+- {name: "broccoli", category: "vegetable", location: "fridge", status: "none"}
+- {name: "carrot", category: "vegetable", location: "fridge", status: "none"}
+- {name: "kumara", category: "vegetable", location: "shelf", status: "none"}
+- {name: "potato", category: "vegetable", location: "shelf", status: "none"}
+- {name: "pumpkin", category: "vegetable", location: "fridge", status: "none"}
+- {name: "peas", category: "vegetable", location: "freezer", status: "none"}
+- {name: "sweetcorn", category: "vegetable", location: "freezer", status: "none"}
+- {name: "spinach", category: "vegetable", location: "fridge", status: "none"}
+- {name: "courgette", category: "vegetable", location: "fridge", status: "none"}
+- {name: "capsicum", category: "vegetable", location: "fridge", status: "none"}
+- {name: "cauliflower", category: "vegetable", location: "fridge", status: "none"}
+- {name: "green beans", category: "vegetable", location: "fridge", status: "none"}
+- {name: "tomato", category: "vegetable", location: "fridge", status: "none"}
+- {name: "cucumber", category: "vegetable", location: "fridge", status: "none"}
+- {name: "onion", category: "vegetable", location: "shelf", status: "none"}
+- {name: "garlic", category: "vegetable", location: "shelf", status: "none"}
+- {name: "mushroom", category: "vegetable", location: "fridge", status: "none"}
+- {name: "cabbage", category: "vegetable", location: "fridge", status: "none"}
+
+# --- Fruit ------------------------------------------------------------------
+- {name: "banana", category: "fruit", location: "shelf", status: "none"}
+- {name: "apple", category: "fruit", location: "fridge", status: "none"}
+- {name: "pear", category: "fruit", location: "fridge", status: "none"}
+- {name: "orange", category: "fruit", location: "fridge", status: "none"}
+- {name: "kiwifruit", category: "fruit", location: "fridge", status: "none"}
+- {name: "strawberries", category: "fruit", location: "fridge", status: "none"}
+- {name: "blueberries", category: "fruit", location: "freezer", status: "none"}
+- {name: "avocado", category: "fruit", location: "shelf", status: "none"}
+
+# --- Grains & starch --------------------------------------------------------
+- {name: "rice", category: "grain", location: "shelf", status: "none"}
+- {name: "pasta", category: "grain", location: "shelf", status: "none"}
+- {name: "rolled oats", category: "grain", location: "shelf", status: "none"}
+- {name: "wholemeal bread", category: "grain", location: "fridge", status: "none"}
+- {name: "couscous", category: "grain", location: "shelf", status: "none"}
+- {name: "weetbix", category: "grain", location: "shelf", status: "none"}
+- {name: "flour", category: "grain", location: "shelf", status: "none"}
+
+# --- Dairy ------------------------------------------------------------------
+- {name: "milk", category: "dairy", location: "fridge", status: "none"}
+- {name: "cheddar cheese", category: "dairy", location: "fridge", status: "none"}
+- {name: "plain yoghurt", category: "dairy", location: "fridge", status: "none"}
+- {name: "butter", category: "dairy", location: "fridge", status: "none"}
+- {name: "cream cheese", category: "dairy", location: "fridge", status: "none"}
+
+# --- Legumes & canned -------------------------------------------------------
+- {name: "red lentils", category: "legume", location: "shelf", status: "none"}
+- {name: "chickpeas", category: "legume", location: "shelf", status: "none"}
+- {name: "black beans", category: "legume", location: "shelf", status: "none"}
+- {name: "baked beans", category: "legume", location: "shelf", status: "none"}
+
+# --- Pantry / other ---------------------------------------------------------
+- {name: "olive oil", category: "pantry", location: "shelf", status: "none"}
+- {name: "tomato paste", category: "pantry", location: "shelf", status: "none"}
+- {name: "coconut milk", category: "pantry", location: "shelf", status: "none"}

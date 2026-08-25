@@ -11,14 +11,18 @@ from toddler_dinner.models import (
     FoodGroup,
     HistoryEntry,
     Ingredient,
+    InventoryItem,
     Menu,
     NutritionFacts,
     Recipe,
     ShoppingList,
+    StockStatus,
+    StorageLocation,
     Sticker,
 )
 from toddler_dinner.persistence import (
     DinnerHistoryRepository,
+    InventoryRepository,
     MenuRepository,
     RecipeRepository,
     StickerRepository,
@@ -26,6 +30,7 @@ from toddler_dinner.persistence import (
 from toddler_dinner.persistence.orm import (
     DinnerHistoryORM,
     IngredientORM,
+    InventoryItemORM,
     MenuItemORM,
     MenuORM,
     RecipeEquipmentORM,
@@ -100,6 +105,30 @@ def recipe_to_orm(recipe: Recipe) -> RecipeORM:
     row.tags = [RecipeTagORM(tag=t) for t in recipe.tags]
     row.hazards = [RecipeHazardORM(flag=f) for f in recipe.hazard_flags]
     return row
+
+
+def orm_to_inventory_item(row: InventoryItemORM) -> InventoryItem:
+    return InventoryItem(
+        name=row.name,
+        status=StockStatus(row.status),
+        quantity=row.quantity,
+        unit=row.unit,
+        best_before=row.best_before,
+        category=row.category,
+        opened=row.opened,
+        location=StorageLocation(row.location),
+    )
+
+
+def _apply_inventory_item(row: InventoryItemORM, item: InventoryItem) -> None:
+    row.name = item.name
+    row.status = item.status.value
+    row.quantity = item.quantity
+    row.unit = item.unit
+    row.best_before = item.best_before
+    row.category = item.category
+    row.opened = item.opened
+    row.location = item.location.value
 
 
 # --- repositories -----------------------------------------------------------
@@ -340,6 +369,66 @@ class PgStickerRepository(StickerRepository):
     def delete(self, sticker_id: int) -> bool:
         with self._sf() as s:
             row = s.get(RecipeStickerORM, sticker_id)
+            if row is None:
+                return False
+            s.delete(row)
+            s.commit()
+            return True
+
+
+class PgInventoryRepository(InventoryRepository):
+    """Postgres-backed inventory catalog. Also serves as the `InventoryProvider` read port."""
+
+    def __init__(self, session_factory: sessionmaker[Session]) -> None:
+        self._sf = session_factory
+
+    def list_items(self) -> list[InventoryItem]:
+        with self._sf() as s:
+            rows = s.scalars(select(InventoryItemORM).order_by(InventoryItemORM.name)).all()
+            return [orm_to_inventory_item(r) for r in rows]
+
+    def upsert_many(self, items: list[InventoryItem]) -> int:
+        """The editing UI's atomic **Save**: add new items *and* update existing ones (status or
+        any field) in ONE transaction — a single COMMIT, only if something changed; any failure
+        rolls the whole batch back. Returns the count inserted or updated."""
+        changed = 0
+        with self._sf() as s:
+            for item in items:
+                row = s.scalars(
+                    select(InventoryItemORM).where(
+                        func.lower(InventoryItemORM.name) == item.name.lower()
+                    )
+                ).first()
+                if row is None:
+                    row = InventoryItemORM()
+                    _apply_inventory_item(row, item)
+                    s.add(row)
+                    changed += 1
+                else:
+                    _apply_inventory_item(row, item)
+                    if s.is_modified(row):
+                        changed += 1
+            if changed:
+                s.commit()
+        return changed
+
+    def set_status(self, name: str, status: StockStatus) -> InventoryItem | None:
+        with self._sf() as s:
+            row = s.scalars(
+                select(InventoryItemORM).where(func.lower(InventoryItemORM.name) == name.lower())
+            ).first()
+            if row is None:
+                return None
+            row.status = status.value
+            s.commit()
+            s.refresh(row)
+            return orm_to_inventory_item(row)
+
+    def delete(self, name: str) -> bool:
+        with self._sf() as s:
+            row = s.scalars(
+                select(InventoryItemORM).where(func.lower(InventoryItemORM.name) == name.lower())
+            ).first()
             if row is None:
                 return False
             s.delete(row)

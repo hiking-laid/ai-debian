@@ -10,7 +10,7 @@ COPY db ./db
 
 RUN pip install --no-cache-dir . && chmod +x docker-entrypoint.sh
 
-# Config + inventory files are mounted as a volume (edit without rebuild).
+# Config files are mounted as a volume (edit without rebuild); inventory lives in Postgres.
 EXPOSE 8080
 
 # Entrypoint applies DB migrations (idempotent) then runs the CMD.

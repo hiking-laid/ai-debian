@@ -3,7 +3,7 @@
 # Config/secrets live on the NAS and are NOT baked into the image — set them up once:
 #   - .env                (TDP_POSTGRES_DSN, LLM provider/keys, TDP_WEB_PORT, ...)
 #   - config/profile.yaml
-#   - data/inventory.yaml
+# (Inventory is seeded into Postgres by the DB migration; there is no inventory file.)
 #
 # Update flow on the NAS:
 #   docker compose -f docker-compose.prod.yml pull
@@ -22,7 +22,7 @@ services:
     env_file:
       - .env
     volumes:
-      # Edit config + inventory on the host (NAS) without touching the image.
+      # Edit config on the host (NAS) without touching the image; data/ holds exports.
       - ./config:/app/config
       - ./data:/app/data
       # Persist the GitHub Copilot device-flow token across restarts.

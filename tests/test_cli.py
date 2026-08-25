@@ -53,7 +53,7 @@ def planner(monkeypatch):
         household=HouseholdProfile(), exclusions=Exclusions(), variety_days=5,
     )
     p = Planner(profile=profile, inventory=_Inv(), recipes=InMemoryRecipeRepository(), llm=_LLM())
-    monkeypatch.setattr(cli, "build_planner", lambda config, inventory: p)
+    monkeypatch.setattr(cli, "build_planner", lambda config: p)
     return p
 
 

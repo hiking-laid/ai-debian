@@ -14,7 +14,6 @@ nothing to run inside it.
 ```bash
 cp .env.example .env                                  # set Postgres DSN + LLM provider
 cp config/profile.example.yaml config/profile.yaml   # edit child/household/exclusions
-cp data/inventory.example.yaml data/inventory.yaml    # edit fridge contents
 
 docker compose up --build     # migrations run automatically, then the app serves
 ```
@@ -36,20 +35,24 @@ so edit them on the host without rebuilding. Postgres is external (e.g. your NAS
 
 ```bash
 # 1. Install (Python 3.11+)
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 
 # 2. Configure
 cp config/profile.example.yaml config/profile.yaml
-cp data/inventory.example.yaml data/inventory.yaml
 cp .env.example .env
 
 # 3. Create/upgrade database tables (Alembic)
 toddler-dinner db upgrade
 
-# 4. (Copilot only) authorize once via device flow
+# 4. Seed the inventory catalog (initial deployment only; loads data/inventory.seed.yaml as 'none')
+toddler-dinner inventory seed
+
+# 5. (Copilot only) authorize once via device flow
 toddler-dinner login-copilot
 
-# 5. Use
+# 6. Use
 toddler-dinner tonight            # Flow 1: suggest tonight's dinner from the fridge
 toddler-dinner another-idea       # generate a fresh validated recipe from what's on hand
 toddler-dinner plan-tomorrow      # Flow 2: dinner + groceries list (exports Markdown)
