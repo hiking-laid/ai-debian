@@ -28,6 +28,14 @@ services:
       # Persist the GitHub Copilot device-flow token across restarts.
       - copilot-auth:/root/.toddler_dinner
     restart: unless-stopped
+    # The app needs to reach the Internet (for LLM API calls) and the NAS's Postgres (for inventory and history).
+    networks:
+      - shared
 
 volumes:
   copilot-auth:
+
+networks:
+  shared:
+    external: true
+    name: general_bridge # the NAS's default bridge network (so the app can reach the Internet and the NAS's Postgres)
