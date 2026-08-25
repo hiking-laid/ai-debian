@@ -7,10 +7,9 @@ is used to make real feeding decisions.
 
 - [x] **#15 — Database discipline: table + column comments.** Every ORM table and column in
   `persistence/orm.py` carries a `comment=` (→ Postgres `COMMENT ON TABLE/COLUMN`), so the schema
-  self-documents in `psql \d+` and generated DDL. **Applying to a live DB needs a migration:**
-  `alembic revision --autogenerate` picks up the comments (emits `create_table_comment` /
-  `alter_column(..., comment=...)`); fold this into the same pending migration pass as #20, then
-  regenerate `db/schema.sql`.
+  self-documents in `psql \d+` and generated DDL. **Applied to the DB by migration `e158a335e2f2`**
+  (alembic-generated: `create_table_comment` / `alter_column(..., comment=...)`). `db/schema.sql`
+  still needs regenerating (`alembic upgrade head --sql`).
 
 - [x] **Nutrition reference data transcribed from cited primary sources.**
   `src/toddler_dinner/nutrition/reference.py` now carries inline source citations:
@@ -119,24 +118,20 @@ is now a **coarse per-item status**, not quantities.
    treats `have`/`low` as on-hand and excludes `none`; the 2 LLM prompt sites
    (`another_idea`, `customize`) send names only and annotate `low`; groceries buy `none`
    (staples still exempt); added `data/inventory.seed.yaml` (all `none`); tests added.
-2. **◐ #20 — DB catalog — CODE DONE, migration pending.** `inventory_items` table
+2. **◐ #20 — DB catalog — implemented; migration generated.** `inventory_items` table
    (`InventoryItemORM`, unique name, `status`, nullable `quantity`/`unit`, `best_before`) +
    `InventoryRepository` (extends `InventoryProvider`) + `PgInventoryRepository` (list /
    upsert_many / set_status / delete) + `InMemoryInventoryRepository`; `build_planner` cut YAML→DB;
-   tests added.
-   **Seeding = initial deployment only** via `toddler-dinner inventory seed` (loads
-   `data/inventory.seed.yaml`, all `none`, skips if the catalog is non-empty); wired into
-   `docker-entrypoint.sh` after migrations. A future input UI is how the user flips statuses.
-   **Migration must be generated in a real env (not hand-written):**
-   - [ ] `alembic revision --autogenerate -m "inventory_items catalog"` (grounded in
-     `InventoryItemORM`); confirm it creates `inventory_items` + the unique `name` index and nothing
-     else. **Create-table only — no data seed in the migration** (seeding is the YAML loader above).
-   - [ ] Re-run `alembic revision --autogenerate` and confirm an **empty** diff (proves the migration
-     matches the ORM).
-   - [ ] Regenerate `db/schema.sql` (`alembic upgrade head --sql`) — already stale (missing the last
-     3 migrations), so regenerate wholesale, don't hand-patch.
-   - Note: until this migration exists + is applied, the app can't read inventory (table absent) —
-     expected WIP; the test suite is unaffected (uses in-memory fakes).
+   tests added. **Migration `e158a335e2f2`** (alembic-generated) creates the table and applies the
+   #15 comments across all tables.
+   **Seeding = initial deployment only:** `data/inventory.seed.yaml` (all `none`) is **baked into
+   the image** (`COPY data ./data`; the `./data` compose volume was removed so the baked file isn't
+   shadowed by a host mount), and `docker-entrypoint.sh` runs `toddler-dinner inventory seed` after
+   migrations — now **fail-loud** (no error swallowing) so a broken deploy can't silently leave the
+   catalog empty. A future input UI is how the user flips statuses.
+   - [ ] Verify on a live deploy (fresh DB → table created → all seed rows inserted as `none`).
+   - [ ] Regenerate `db/schema.sql` (`alembic upgrade head --sql`) — still stale (missing recent
+     migrations); not used by `db upgrade`, only for direct `psql` init.
 3. **#14 — read-only drawer (after the migration).** `GET /api/inventory` + top-right hamburger →
    right slide-in drawer, grouped by location, showing **status + best_before**, over a blurred
    backdrop; Esc/backdrop/X to close; a11y. Backed by the `list_items()` read port.

@@ -255,13 +255,15 @@ class PgDinnerHistoryRepository(DinnerHistoryRepository):
             s.commit()
 
     def recent(self, days: int, on: date | None = None) -> list[HistoryEntry]:
-        on = on or date.today()
-        cutoff = on - timedelta(days=days)
+        """The last `days` cooked dinners by **count**, most recent first (DESIGN: "the last
+        history_days cooked dinners"). A count, not a date window, so the history view stays
+        populated even when the last dinner was a while ago. `on` is accepted for interface
+        parity but unused."""
         with self._sf() as s:
             rows = s.scalars(
                 select(DinnerHistoryORM)
-                .where(DinnerHistoryORM.served_on >= cutoff)
                 .order_by(DinnerHistoryORM.served_on.desc(), DinnerHistoryORM.recipe_id.desc())
+                .limit(days)
             ).all()
             entries: list[HistoryEntry] = []
             for row in rows:

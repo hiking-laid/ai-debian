@@ -17,4 +17,4 @@ exclusions:
 
 dinner_daily_fraction: 0.33  # dinner targets ~1/3 of daily nutrition needs
 variety_days: 5              # avoid repeating a dinner served within this many days
-history_days: 5             # how many days of cooked dinners to show in the history view
+history_days: 5             # how many recent cooked dinners to show in the history view (by count)
