@@ -7,7 +7,7 @@ services:
     env_file:
       - .env
     volumes:
-      # Edit config + inventory on the host without rebuilding the image.
+      # Edit config on the host without rebuilding the image; data/ holds exports.
       - ./config:/app/config
       - ./data:/app/data
       # Persist the GitHub Copilot device-flow token across restarts (home dir of root).

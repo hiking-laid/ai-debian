@@ -7,7 +7,14 @@ from datetime import date, timedelta
 from toddler_dinner.config import ChildProfile, Exclusions, HouseholdProfile, Profile, Sex
 from toddler_dinner.core import Planner, groceries_for, missing_ingredients
 from toddler_dinner.export import groceries_csv, groceries_markdown
-from toddler_dinner.models import FoodGroup, Ingredient, InventoryItem, NutritionFacts, Recipe
+from toddler_dinner.models import (
+    FoodGroup,
+    Ingredient,
+    InventoryItem,
+    NutritionFacts,
+    Recipe,
+    StockStatus,
+)
 from toddler_dinner.persistence import InMemoryRecipeRepository
 from toddler_dinner.providers.inventory_yaml import YamlInventoryProvider
 
@@ -132,6 +139,31 @@ def test_groceries_excludes_pantry_staples():
     gl = groceries_for(r, [])  # empty fridge
     names = [g.name for g in gl.items]
     assert names == ["chicken"]  # water/salt/oil filtered out
+
+
+def test_groceries_buys_none_status_item():
+    # broccoli is stocked but 'none' (out) -> a recipe needing it puts it on the buy list.
+    r = _recipe("bowl", [("rice", 200, "g"), ("broccoli", 1, "head")])
+    fridge = [InventoryItem(name="rice", status=StockStatus.HAVE),
+              InventoryItem(name="broccoli", status=StockStatus.NONE)]
+    names = [g.name for g in groceries_for(r, fridge).items]
+    assert names == ["broccoli"]
+
+
+def test_groceries_does_not_buy_low_status_item():
+    # 'low' still counts as on hand -> never auto-added to the shopping list.
+    r = _recipe("bowl", [("rice", 200, "g"), ("broccoli", 1, "head")])
+    fridge = [InventoryItem(name="rice", status=StockStatus.HAVE),
+              InventoryItem(name="broccoli", status=StockStatus.LOW)]
+    assert groceries_for(r, fridge).items == []
+
+
+def test_none_staple_still_exempt_from_buying():
+    # even at 'none', a pantry staple is assumed on hand -> never bought.
+    r = _recipe("bowl", [("chicken", 300, "g"), ("salt", 1, "pinch")])
+    fridge = [InventoryItem(name="salt", status=StockStatus.NONE)]
+    names = [g.name for g in groceries_for(r, fridge).items]
+    assert names == ["chicken"]  # salt filtered out despite 'none'
 
 
 # --- draw_from_cookbook (issue #13 button engine) ---------------------------

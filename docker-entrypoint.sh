@@ -17,4 +17,8 @@ until toddler-dinner db upgrade; do
 done
 echo "[entrypoint] migrations applied."
 
+# Initial deployment only: seed the inventory catalog from the seed file when it's empty.
+echo "[entrypoint] seeding inventory catalog if empty..."
+toddler-dinner inventory seed || echo "[entrypoint] inventory seed skipped." >&2
+
 exec "$@"

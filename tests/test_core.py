@@ -7,8 +7,15 @@ from toddler_dinner.config import (
     Profile,
     Sex,
 )
-from toddler_dinner.core import match_from_inventory
-from toddler_dinner.models import FoodGroup, Ingredient, InventoryItem, NutritionFacts, Recipe
+from toddler_dinner.core import _inventory_for_prompt, match_from_inventory
+from toddler_dinner.models import (
+    FoodGroup,
+    Ingredient,
+    InventoryItem,
+    NutritionFacts,
+    Recipe,
+    StockStatus,
+)
 from toddler_dinner.nutrition import (
     age_in_months,
     daily_food_group_targets,
@@ -100,6 +107,44 @@ def test_partial_missing_excludes_staples():
     assert result.kind == "partial"
     assert "broccoli" in result.missing
     assert "water" not in result.missing   # staple, never flagged as missing
+
+
+# --- stock status -----------------------------------------------------------
+
+def test_none_status_excluded_from_match():
+    # broccoli is 'none' (out) -> treated as not on hand, so it's still 'missing'.
+    recipes = [_recipe("chicken broccoli", ["chicken", "broccoli"])]
+    items = [
+        InventoryItem(name="chicken", status=StockStatus.HAVE),
+        InventoryItem(name="broccoli", status=StockStatus.NONE),
+    ]
+    result = match_from_inventory(recipes, items)
+    assert result.kind == "partial"
+    assert "broccoli" in result.missing
+
+
+def test_low_status_counts_as_on_hand():
+    # 'low' is still usable -> an otherwise-complete recipe is an exact match.
+    recipes = [_recipe("chicken broccoli", ["chicken", "broccoli"])]
+    items = [
+        InventoryItem(name="chicken", status=StockStatus.HAVE),
+        InventoryItem(name="broccoli", status=StockStatus.LOW),
+    ]
+    result = match_from_inventory(recipes, items)
+    assert result.kind == "exact"
+    assert result.missing == []
+
+
+def test_inventory_for_prompt_annotates_low_and_skips_none():
+    items = [
+        InventoryItem(name="chicken", status=StockStatus.HAVE),
+        InventoryItem(name="broccoli", status=StockStatus.LOW),
+        InventoryItem(name="mushroom", status=StockStatus.NONE),
+    ]
+    prompt = _inventory_for_prompt(items)
+    assert "chicken" in prompt
+    assert "broccoli (low" in prompt        # flagged as not-the-main
+    assert "mushroom" not in prompt         # 'none' is omitted entirely
 
 
 # --- validation -------------------------------------------------------------

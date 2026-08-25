@@ -18,29 +18,26 @@ app = typer.Typer(help="Toddler Dinner Planner")
 @dataclass
 class State:
     config: str = "config/profile.yaml"
-    inventory: str = "data/inventory.yaml"
 
 
 @app.callback()
 def main(
     ctx: typer.Context,
     config: str = typer.Option("config/profile.yaml", help="Profile YAML path."),
-    inventory: str = typer.Option("data/inventory.yaml", help="Inventory YAML path."),
 ) -> None:
     """Toddler Dinner Planner — global options apply to all commands."""
-    ctx.obj = State(config=config, inventory=inventory)
+    ctx.obj = State(config=config)
 
 
 def _planner(ctx: typer.Context) -> Planner:
     """Build the planner with friendly errors instead of raw tracebacks."""
     state: State = ctx.obj
     try:
-        return build_planner(state.config, state.inventory)
+        return build_planner(state.config)
     except FileNotFoundError as e:
         typer.secho(
-            f"Config/inventory not found ({e}). Copy the examples:\n"
-            "  cp config/profile.example.yaml config/profile.yaml\n"
-            "  cp data/inventory.example.yaml data/inventory.yaml",
+            f"Config not found ({e}). Copy the example:\n"
+            "  cp config/profile.example.yaml config/profile.yaml",
             fg="red", err=True,
         )
         raise typer.Exit(1)
@@ -163,6 +160,26 @@ def db_upgrade(revision: str = "head") -> None:
 
     command.upgrade(Config("alembic.ini"), revision)
     typer.echo(f"Database upgraded to {revision}.")
+
+
+inv_app = typer.Typer(help="Inventory catalog (Postgres).")
+app.add_typer(inv_app, name="inventory")
+
+
+@inv_app.command("seed")
+def inventory_seed(
+    path: str = typer.Option("data/inventory.seed.yaml", help="Seed YAML path."),
+    force: bool = typer.Option(False, "--force", help="Seed even if the catalog is non-empty."),
+) -> None:
+    """Load the inventory seed into the catalog — initial deployment only (skips if non-empty)."""
+    from toddler_dinner.app import seed_inventory_if_empty
+
+    try:
+        n = seed_inventory_if_empty(path, force=force)
+        typer.echo(f"Seeded {n} inventory items." if n else "Catalog already populated; skipped.")
+    except Exception as e:  # noqa: BLE001 - surface DB wiring failures cleanly
+        typer.secho(f"Seed failed: {e}", fg="red", err=True)
+        raise typer.Exit(1)
 
 
 @app.command()

@@ -21,6 +21,7 @@ from toddler_dinner.models import (
     Recipe,
     ShoppingItem,
     ShoppingList,
+    StockStatus,
 )
 from toddler_dinner.nutrition import age_in_months, validate_recipe
 from toddler_dinner.persistence import (
@@ -68,7 +69,7 @@ def _ingredient_overlap(recipe: Recipe, have: set[str]) -> tuple[int, list[str]]
 def match_from_inventory(recipes: list[Recipe], items: list[InventoryItem]) -> MatchResult:
     """Flow 1 matching cascade: exact -> partial -> none."""
 
-    have = {i.name.lower() for i in items}
+    have = {i.name.lower() for i in items if i.status != StockStatus.NONE}
     best: MatchResult | None = None
     for recipe in recipes:
         matched, missing = _ingredient_overlap(recipe, have)
@@ -92,7 +93,21 @@ def _is_staple(name: str) -> bool:
 
 
 def _have_names(items: list[InventoryItem]) -> set[str]:
-    return {i.name.lower() for i in items}
+    # 'none' means out of stock -> not on hand for matching/groceries.
+    return {i.name.lower() for i in items if i.status != StockStatus.NONE}
+
+
+def _inventory_for_prompt(items: list[InventoryItem]) -> str:
+    """On-hand items as a name list for the LLM: skip 'none', flag 'low' as not-the-main."""
+    parts: list[str] = []
+    for i in items:
+        if i.status == StockStatus.NONE:
+            continue
+        if i.status == StockStatus.LOW:
+            parts.append(f"{i.name} (low — not as the main ingredient)")
+        else:
+            parts.append(i.name)
+    return ", ".join(parts)
 
 
 def _in_fridge(ingredient_name: str, have: set[str]) -> bool:
@@ -280,7 +295,7 @@ class Planner:
         if self.llm is None:
             raise RuntimeError("No LLM provider configured.")
         items = self.inventory.list_items()
-        have = ", ".join(f"{i.quantity}{i.unit} {i.name}" for i in items)
+        have = _inventory_for_prompt(items)
 
         # Distinct protein families available, in inventory order; rotate which one to feature.
         families = list(
@@ -288,6 +303,7 @@ class Planner:
                 _protein_family(i.name)
                 for i in items
                 if (i.category or "").lower() in ("protein", "legume")
+                and i.status == StockStatus.HAVE
             )
         )
         featured = self._next_featured(families)
@@ -344,7 +360,7 @@ class Planner:
         if self.llm is None:
             raise RuntimeError("No LLM provider configured.")
         items = self.inventory.list_items()
-        have = ", ".join(f"{i.quantity}{i.unit} {i.name}" for i in items)
+        have = _inventory_for_prompt(items)
 
         parts: list[str] = []
         if base is not None:

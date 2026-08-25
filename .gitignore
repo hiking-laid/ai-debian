@@ -5,9 +5,7 @@ __pycache__/
 venv/
 .env
 config/profile.yaml
-data/inventory.yaml
-data/exports/*
-!data/exports/.gitkeep
+data/exports/
 tmp/
 .pytest_cache/
 .ruff_cache/
