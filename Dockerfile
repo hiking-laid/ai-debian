@@ -7,10 +7,12 @@ COPY pyproject.toml README.md alembic.ini docker-entrypoint.sh ./
 COPY src ./src
 COPY migrations ./migrations
 COPY db ./db
+COPY data ./data
 
 RUN pip install --no-cache-dir . && chmod +x docker-entrypoint.sh
 
-# Config files are mounted as a volume (edit without rebuild); inventory lives in Postgres.
+# config/ is mounted as a volume (edit without rebuild); data/ (incl. the inventory seed) is
+# baked into the image so seeding never depends on a host mount.
 EXPOSE 8080
 
 # Entrypoint applies DB migrations (idempotent) then runs the CMD.

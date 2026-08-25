@@ -1,6 +1,6 @@
 #!/bin/sh
-# Container entrypoint: apply DB migrations (idempotent) then start the app.
-# Alembic's `upgrade head` only applies migrations not yet recorded in alembic_version,
+# Container entrypoint: apply DB migrations, seed the inventory catalog if empty, then start
+# the app. Alembic's `upgrade head` only applies migrations not yet recorded in alembic_version,
 # so this is safe to run on every startup — empty DB gets created, current DB is a no-op.
 set -e
 
@@ -17,8 +17,10 @@ until toddler-dinner db upgrade; do
 done
 echo "[entrypoint] migrations applied."
 
-# Initial deployment only: seed the inventory catalog from the seed file when it's empty.
+# Initial deployment only: seed the inventory catalog from the baked-in seed file when empty.
+# Idempotent (skips if already populated). A real failure aborts startup (set -e) so a broken
+# deploy can't silently leave the catalog empty.
 echo "[entrypoint] seeding inventory catalog if empty..."
-toddler-dinner inventory seed || echo "[entrypoint] inventory seed skipped." >&2
+toddler-dinner inventory seed
 
 exec "$@"

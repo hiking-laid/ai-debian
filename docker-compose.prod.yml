@@ -3,12 +3,13 @@
 # Config/secrets live on the NAS and are NOT baked into the image — set them up once:
 #   - .env                (TDP_POSTGRES_DSN, LLM provider/keys, TDP_WEB_PORT, ...)
 #   - config/profile.yaml
-# (Inventory is seeded into Postgres by the DB migration; there is no inventory file.)
+# (The inventory catalog is baked into the image and seeded into Postgres on first deploy —
+#  nothing to set up; a future UI edits it.)
 #
 # Update flow on the NAS:
 #   docker compose -f docker-compose.prod.yml pull
 #   docker compose -f docker-compose.prod.yml up -d
-# (The container auto-applies DB migrations on start via the entrypoint.)
+# (The container auto-applies DB migrations and seeds the inventory catalog on first start.)
 #
 # If the GHCR package is private, first: `docker login ghcr.io -u aiden-liu` (PAT with read:packages).
 
@@ -22,9 +23,8 @@ services:
     env_file:
       - .env
     volumes:
-      # Edit config on the host (NAS) without touching the image; data/ holds exports.
+      # Edit config on the host (NAS) without touching the image.
       - ./config:/app/config
-      - ./data:/app/data
       # Persist the GitHub Copilot device-flow token across restarts.
       - copilot-auth:/root/.toddler_dinner
     restart: unless-stopped
