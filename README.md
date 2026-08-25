@@ -35,6 +35,8 @@ so edit them on the host without rebuilding. Postgres is external (e.g. your NAS
 
 ```bash
 # 1. Install (Python 3.11+)
+python3 -m venv .venv
+source .venv/bin/activate
 pip install -e ".[dev]"
 
 # 2. Configure
