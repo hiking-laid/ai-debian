@@ -49,7 +49,7 @@ class Profile(BaseModel):
     exclusions: Exclusions = Field(default_factory=Exclusions)
     dinner_daily_fraction: float = 0.33
     variety_days: int = 5  # avoid repeating a dinner served within this many days
-    history_days: int = 5  # how many days of cooked dinners to show in the history view
+    history_days: int = 5  # how many recent cooked dinners to show in the history view (by count)
     # (snapshot_freshness_days omitted in v1 — returns with the future supermarket integration.)
 
 

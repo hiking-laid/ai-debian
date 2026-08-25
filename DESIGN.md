@@ -106,9 +106,10 @@ Core is a set of **callable actions** ("skills"), reachable three ways:
   suggestions for `variety_days`. A recipe can be both; repeats **dedup by title** (one row).
 
 ### History view (Recently Cooked)
-Read-only cards for the last `history_days` cooked dinners (full recipe, for reusing leftover
-veg), each with a single **Cooked It Today** to re-record it. Generative leftover-reuse
-("use up my broccoli") is a future version.
+Read-only cards for the last `history_days` cooked dinners — the **N most recent by count**, newest
+first (not a date window), so the row stays populated even if the last dinner was a while ago —
+full recipe (for reusing leftover veg), each with a single **Cooked It Today** to re-record it.
+Generative leftover-reuse ("use up my broccoli") is a future version.
 
 ## 5. Nutrition & Safety Model
 

@@ -218,19 +218,31 @@ def test_cook_then_approve_same_recipe(sf):
     assert approved.approved is True and approved.cooked is True  # both flags on one row
 
 
-def test_history_recent_returns_full_recipes(sf):
+def test_history_recent_returns_last_n_by_count(sf):
     recipes = PgRecipeRepository(sf)
     hist = PgDinnerHistoryRepository(sf)
     r = recipes.mark_cooked(_recipe("Lentil Risotto"))
     today = date(2025, 6, 10)
     hist.record(r.title, today, r.id)
     old = recipes.mark_cooked(_recipe("Old Risotto"))
-    hist.record(old.title, today - timedelta(days=20), old.id)  # outside window
+    hist.record(old.title, today - timedelta(days=20), old.id)  # old, but still shown (count-based)
     entries = hist.recent(5, on=today)
-    assert len(entries) == 1
+    # Both returned regardless of age, most recent first — not a date window.
+    assert [e.recipe.title for e in entries] == ["Lentil Risotto", "Old Risotto"]
     assert entries[0].served_on == today
-    assert entries[0].recipe.title == "Lentil Risotto"
-    assert [i.name for i in entries[0].recipe.ingredients] == ["chicken", "rice"]
+    assert [i.name for i in entries[0].recipe.ingredients] == ["chicken", "rice"]  # full recipe
+
+
+def test_history_recent_limits_by_count(sf):
+    recipes = PgRecipeRepository(sf)
+    hist = PgDinnerHistoryRepository(sf)
+    today = date(2025, 6, 10)
+    for i in range(4):
+        rc = recipes.mark_cooked(_recipe(f"Dish {i}"))
+        hist.record(rc.title, today - timedelta(days=i), rc.id)
+    entries = hist.recent(2, on=today)
+    assert len(entries) == 2                       # only the 2 most recent kept
+    assert entries[0].served_on == today           # newest first
 
 
 def test_inmemory_approve_and_cook_dedup():
