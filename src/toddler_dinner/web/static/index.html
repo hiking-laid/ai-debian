@@ -225,14 +225,24 @@
     .inv-group{ margin-bottom:.9rem; border-top:1px solid var(--line); }
     /* Each location folds by default; the summary is the tappable header. */
     .inv-group > summary{ list-style:none; cursor:pointer; display:flex; align-items:center;
-                          justify-content:space-between; gap:.8rem; padding:.9rem 0;
+                          gap:.5rem; padding:.9rem 0;
                           font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.22em;
                           font-size:.66rem; color:var(--bronze);
                           position:sticky; top:0; z-index:2; background:var(--paper);
                           border-bottom:1px solid var(--line); }
     .inv-group > summary::-webkit-details-marker{ display:none; }
-    .inv-group > summary::after{ content:"+"; font-size:1rem; letter-spacing:0; color:var(--muted); }
+    .inv-group > summary::after{ content:"+"; font-size:1rem; letter-spacing:0; color:var(--muted);
+                                 margin-left:auto; }   /* fold indicator pinned to the far right */
     .inv-group[open] > summary::after{ content:"\2013"; }   /* en dash when expanded */
+    /* Pencil (edit) → check (save) button, sits just right of the location(+category). */
+    .loc-edit{ flex:0 0 auto; width:26px; height:26px; display:inline-flex; align-items:center;
+               justify-content:center; border:1px solid var(--line); background:var(--paper);
+               color:var(--bronze); cursor:pointer; padding:0; font-size:.85rem; line-height:1;
+               transition:margin-left .3s ease; }
+    .loc-edit::before{ content:"\270E"; }                    /* pencil */
+    .loc-edit:hover{ border-color:var(--bronze); }
+    .inv-group.editing .loc-edit{ background:var(--bronze); color:var(--paper); border-color:var(--bronze); }
+    .inv-group.editing .loc-edit::before{ content:"\2713"; } /* check = save */
     .inv-group .inv-loc{ display:flex; align-items:center; gap:.55rem; }
     /* Category name that fades in beside the location as you scroll a category. */
     .inv-loc .loc-cat{ display:inline-flex; align-items:center; gap:.55rem;
@@ -273,6 +283,28 @@
                font-size:.72rem; padding:.18rem 0; }
     .inv-drow .inv-k{ text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
     .inv-drow .inv-v{ color:var(--ink); text-align:right; }
+    /* Edit mode: clicking a panel cycles stock status; a best-before calendar drops in on none→full. */
+    .inv-group.editing .inv-caret{ display:none; }
+    .inv-group.editing .inv-panel:hover{ background:var(--paper); }
+    .inv-bb{ border:1px solid var(--line); border-top:none; background:var(--paper); padding:.4rem .6rem .5rem; }
+    .bb-label{ display:flex; align-items:center; gap:.45rem; font-family:'Inter',sans-serif;
+               text-transform:uppercase; letter-spacing:.12em; font-size:.6rem; color:var(--muted); }
+    .bb-label input{ font-family:'Inter',sans-serif; font-size:.72rem; padding:.22rem .3rem;
+                     border:1px solid var(--line); background:var(--paper); color:var(--ink); }
+    /* Add-item box: dashed placeholder shown only in edit mode; firm-lined once typing. */
+    .inv-add{ display:none; }
+    .inv-group.editing .inv-add{ display:block; }
+    .add-box{ width:100%; min-height:2.2rem; display:flex; align-items:center; justify-content:center;
+              border:1px dashed var(--bronze); background:transparent; color:var(--bronze);
+              cursor:pointer; font-size:1.2rem; line-height:1; padding:.45rem; }
+    .add-box:hover{ background:rgba(154,123,70,.08); }
+    .add-input{ width:100%; border:1px solid var(--ink); background:var(--paper); color:var(--ink);
+                font-family:'Cormorant Garamond',serif; font-size:1.1rem; padding:.42rem .5rem; }
+    .add-input:focus{ outline:none; border-color:var(--bronze); }
+    /* Add-category box: reserved dashed row at the top of a location, shown only in edit mode. */
+    .inv-addcat{ display:none; margin:.5rem 0 .8rem; }
+    .inv-group.editing .inv-addcat{ display:block; }
+    .addcat-input{ text-align:center; }
   </style>
 </head>
 <body>
@@ -768,6 +800,9 @@ class StickerLayer {
 // ---- hamburger menu + inventory drawer (issue #14) -------------------------
 const LOCATION_LABELS = { fridge:'Fridge', shelf:'Shelf', freezer:'Freezer' };
 const STATUS_LABELS = { have:'In stock', low:'Running low', none:'Out of stock' };
+const STATUS_NEXT = { none:'have', have:'low', low:'none' };   // click cycle: none → full → low → none
+let invIndex = {};                 // lowercased name -> item object (edited in place)
+const invDirty = new Set();        // lowercased names changed since last save
 let menuOpen = false;
 let drawerOpen = false;
 let lastFocus = null;          // element to restore focus to when the drawer closes
@@ -828,11 +863,17 @@ async function loadInventory(){
   if(d.error){ body.innerHTML = `<p class="empty err">Couldn’t load your inventory — ${esc(d.error)}</p>`; return; }
   const groups = d.groups || [];
   if(!groups.length){ body.innerHTML = '<p class="empty">Nothing in your fridge yet.</p>'; return; }
+  invIndex = {}; invDirty.clear();
+  for(const g of groups) for(const it of (g.items||[])) invIndex[it.name.toLowerCase()] = it;
   body.innerHTML = groups.map(g=>{
     const label = esc(LOCATION_LABELS[g.location] || g.location);
-    return `<details class="inv-group">
-      <summary><span class="inv-loc"><span class="loc-name">${label}</span><span class="loc-cat"></span></span></summary>
-      ${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
+    return `<details class="inv-group" data-loc="${esc(g.location)}">
+      <summary><span class="inv-loc"><span class="loc-name">${label}</span><span class="loc-cat"></span></span>`
+      + `<button class="loc-edit" type="button" title="Edit ${label}" aria-label="Edit ${label}"`
+      + ` onclick="event.preventDefault();event.stopPropagation();toggleLocationEdit(this)"></button></summary>`
+      + '<div class="inv-addcat"><button class="add-box" type="button" aria-label="Add category"'
+      + ' onclick="startAddCategory(this)">+ New category</button></div>'
+      + `${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
   }).join('');
   // Re-sync the pinned "location · category" label to the current scroll position.
   requestAnimationFrame(updateStickyCats);
@@ -854,7 +895,10 @@ function invSubgroups(items){
     const rows = byCat.get(key).map(invRow).join('');
     // Second sticky line: the category name only (uncategorised has no subhead).
     const head = key ? `<div class="inv-subhead">${esc(key)}</div>` : '';
-    return `<div class="inv-subgroup" data-cat="${key ? esc(key) : ''}">${head}<ul class="inv-list">${rows}</ul></div>`;
+    // Trailing dashed add-box (shown only in edit mode) to append a new item to this category.
+    const add = '<li class="inv-add"><button class="add-box" type="button" aria-label="Add item"'
+      + ' onclick="startAddItem(this)">+</button></li>';
+    return `<div class="inv-subgroup" data-cat="${key ? esc(key) : ''}">${head}<ul class="inv-list">${rows}${add}</ul></div>`;
   }).join('');
 }
 
@@ -895,12 +939,12 @@ function invRow(it){
   if(qty) rows.push(invDetailRow('Quantity', qty));
   if(it.best_before) rows.push(invDetailRow('Best before', it.best_before));
   if(it.opened) rows.push(invDetailRow('Opened', 'Yes'));
-  if(it.category) rows.push(invDetailRow('Category', it.category));
-  return `<li class="inv-item">
-    <button class="inv-panel" type="button" aria-expanded="false" onclick="toggleInvItem(this)">
+  return `<li class="inv-item" data-name="${esc(it.name)}">
+    <button class="inv-panel" type="button" aria-expanded="false" onclick="onInvPanel(this)">
       <span class="inv-name">${dot}${esc(it.name)}</span><span class="inv-caret" aria-hidden="true"></span>
     </button>
     <div class="inv-detail" hidden>${rows.join('')}</div>
+    <div class="inv-bb" hidden></div>
   </li>`;
 }
 
@@ -913,6 +957,160 @@ function toggleInvItem(btn){
   btn.setAttribute('aria-expanded', String(!open));
   const detail = btn.nextElementSibling;
   if(detail) detail.hidden = open;
+}
+
+// ---- inventory edit mode (per location) ------------------------------------
+// In view mode a panel click expands detail; in edit mode it cycles the stock status.
+function onInvPanel(btn){
+  const group = btn.closest('.inv-group');
+  if(group && group.classList.contains('editing')) cycleItemStatus(btn.closest('.inv-item'));
+  else toggleInvItem(btn);
+}
+
+function toggleLocationEdit(btn){
+  const group = btn.closest('.inv-group');
+  if(!group.classList.contains('editing')){
+    group.open = true;                       // reveal items to edit
+    group.classList.add('editing');
+    // Collapse any expanded detail so a click cycles status instead.
+    group.querySelectorAll('.inv-panel[aria-expanded="true"]').forEach(toggleInvItem);
+  } else {
+    saveLocationEdits(group, btn);
+  }
+}
+
+function cycleItemStatus(li){
+  const item = invIndex[(li.dataset.name||'').toLowerCase()];
+  if(!item) return;
+  const next = STATUS_NEXT[String(item.status||'have').toLowerCase()] || 'have';
+  item.status = next;
+  invDirty.add(item.name.toLowerCase());
+  const dot = li.querySelector('.inv-dot');
+  const label = STATUS_LABELS[next] || next;
+  dot.className = 'inv-dot ' + next;
+  dot.setAttribute('aria-label', label); dot.title = label;
+  renderItemBB(li, item);                    // none → full reveals the best-before calendar
+}
+
+function renderItemBB(li, item){
+  const bb = li.querySelector('.inv-bb');
+  if(String(item.status).toLowerCase() === 'have'){
+    bb.hidden = false;
+    bb.innerHTML = `<label class="bb-label">Best before <input type="date" value="${item.best_before || ''}"></label>`;
+    bb.querySelector('input').addEventListener('change', (e)=>{
+      item.best_before = e.target.value || null; invDirty.add(item.name.toLowerCase());
+    });
+  } else {
+    bb.hidden = true; bb.innerHTML = '';
+  }
+}
+
+async function saveLocationEdits(group, btn){
+  const items = [];
+  group.querySelectorAll('.inv-item').forEach(li=>{
+    const key = (li.dataset.name||'').toLowerCase();
+    if(invDirty.has(key)) items.push(invIndex[key]);
+  });
+  if(!items.length){ group.classList.remove('editing'); return; }
+  btn.disabled = true;
+  const d = await api('/api/inventory/update', {items});
+  btn.disabled = false;
+  if(d.error){ toast(d.error); return; }
+  items.forEach(it=>invDirty.delete(it.name.toLowerCase()));
+  group.classList.remove('editing');
+  group.querySelectorAll('.inv-bb').forEach(bb=>{ bb.hidden = true; bb.innerHTML=''; });
+  toast(`Updated ${d.updated} item${d.updated===1?'':'s'}`);
+}
+
+// ---- add a new item (edit mode) --------------------------------------------
+function makeAddBox(){
+  const li = document.createElement('li');
+  li.className = 'inv-add';
+  li.innerHTML = '<button class="add-box" type="button" aria-label="Add item"'
+    + ' onclick="startAddItem(this)">+</button>';
+  return li;
+}
+
+// Turn the dashed add-box into a firm-lined name input, and drop a fresh add-box after it.
+function startAddItem(btn){
+  const li = btn.closest('.inv-add');
+  const list = li.parentNode;
+  li.classList.add('adding');
+  li.innerHTML = '<input class="add-input" type="text" maxlength="25" placeholder="New item…">';
+  const input = li.querySelector('input');
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); confirmAddItem(li); }
+    else if(e.key === 'Escape'){ cancelAddItem(li); }
+  });
+  list.insertBefore(makeAddBox(), li.nextSibling);
+  input.focus();
+}
+
+function cancelAddItem(li){ li.remove(); }
+
+// Enter confirms the name → create the item (status full) and pop its best-before calendar.
+function confirmAddItem(li){
+  const name = li.querySelector('input').value.trim().slice(0, 25);
+  if(!name){ cancelAddItem(li); return; }
+  if(invIndex[name.toLowerCase()]){ toast(`“${name}” is already in your inventory`); return; }
+  const sub = li.closest('.inv-subgroup');
+  const item = {
+    name,
+    status: 'have',
+    quantity: null, unit: null, best_before: null,
+    category: sub && sub.dataset.cat ? sub.dataset.cat : null,
+    opened: false,
+    location: li.closest('.inv-group').dataset.loc || 'fridge',
+  };
+  invIndex[name.toLowerCase()] = item;
+  invDirty.add(name.toLowerCase());
+  const t = document.createElement('template');
+  t.innerHTML = invRow(item).trim();
+  const row = t.content.firstElementChild;
+  li.parentNode.replaceChild(row, li);
+  renderItemBB(row, item);                    // full item → best-before calendar pops out
+  const date = row.querySelector('.inv-bb input');
+  if(date) date.focus();
+}
+
+// ---- add a new category (edit mode) ----------------------------------------
+function resetAddCat(box){
+  box.classList.remove('adding');
+  box.innerHTML = '<button class="add-box" type="button" aria-label="Add category"'
+    + ' onclick="startAddCategory(this)">+ New category</button>';
+}
+
+function makeSubgroup(cat){
+  const div = document.createElement('div');
+  div.className = 'inv-subgroup'; div.dataset.cat = cat;
+  div.innerHTML = `<div class="inv-subhead">${esc(cat)}</div><ul class="inv-list"></ul>`;
+  div.querySelector('.inv-list').appendChild(makeAddBox());
+  return div;
+}
+
+// The top add-category box becomes a centred input; Enter creates the category subgroup.
+function startAddCategory(btn){
+  const box = btn.closest('.inv-addcat');
+  box.classList.add('adding');
+  box.innerHTML = '<input class="add-input addcat-input" type="text" maxlength="25" placeholder="New category…">';
+  const input = box.querySelector('input');
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); confirmAddCategory(box); }
+    else if(e.key === 'Escape'){ resetAddCat(box); }
+  });
+  input.focus();
+}
+
+function confirmAddCategory(box){
+  const cat = box.querySelector('input').value.trim().slice(0, 25);
+  if(!cat){ resetAddCat(box); return; }
+  const group = box.closest('.inv-group');
+  const exists = [...group.querySelectorAll('.inv-subgroup')]
+    .some(s => (s.dataset.cat || '').toLowerCase() === cat.toLowerCase());
+  if(exists){ toast(`“${cat}” already exists here`); return; }
+  const sub = makeSubgroup(cat);
+  box.parentNode.insertBefore(sub, box.nextSibling);   // new category sits atop existing ones
+  resetAddCat(box);                                    // keep the add-category box at the top
 }
 
 // Esc closes the drawer (or the menu); a11y requirement.

@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from toddler_dinner.app import build_planner
 from toddler_dinner.core import Planner, missing_ingredients
-from toddler_dinner.models import STICKER_SECTIONS, Recipe
+from toddler_dinner.models import STICKER_SECTIONS, InventoryItem, Recipe
 from toddler_dinner.routing import Action, route
 
 app = FastAPI(title="Toddler Dinner Planner")
@@ -210,6 +210,23 @@ def api_inventory(planner: Planner = Depends(get_planner)) -> dict:
             if buckets[loc]
         ]
         return {"groups": groups}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+class InventoryUpdate(BaseModel):
+    items: list[InventoryItem]   # full items with edited status / best_before
+
+
+@app.post("/api/inventory/update")
+def api_inventory_update(body: InventoryUpdate, planner: Planner = Depends(get_planner)) -> dict:
+    """Persist edited inventory items (status / best-before) as one atomic upsert."""
+    try:
+        repo = planner.inventory
+        if not hasattr(repo, "upsert_many"):
+            return {"error": "Inventory is read-only in this configuration."}
+        updated = repo.upsert_many(body.items)
+        return {"ok": True, "updated": updated}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 

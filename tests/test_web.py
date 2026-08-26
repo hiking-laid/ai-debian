@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import toddler_dinner.web.server as server
 from toddler_dinner.config import ChildProfile, Exclusions, HouseholdProfile, Profile, Sex
 from toddler_dinner.core import Planner
-from toddler_dinner.models import FoodGroup, Ingredient, InventoryItem, NutritionFacts, Recipe
+from toddler_dinner.models import FoodGroup, Ingredient, InventoryItem, NutritionFacts, Recipe, StockStatus
 from toddler_dinner.persistence import InMemoryRecipeRepository
 
 
@@ -245,3 +245,35 @@ def test_inventory_errors_caught_not_500():
     resp = _client(_inv_planner(_Boom())).get("/api/inventory")
     assert resp.status_code == 200
     assert "error" in resp.json()
+
+
+def test_inventory_update_persists():
+    class _Writable:
+        def __init__(self):
+            self.saved = None
+
+        def list_items(self):
+            return [InventoryItem(name="milk", status=StockStatus.NONE)]
+
+        def upsert_many(self, items):
+            self.saved = items
+            return len(items)
+
+    inv = _Writable()
+    payload = {"items": [{"name": "milk", "status": "have", "location": "fridge",
+                          "best_before": "2026-09-01"}]}
+    d = _client(_inv_planner(inv)).post("/api/inventory/update", json=payload).json()
+    assert d["ok"] is True and d["updated"] == 1
+    assert inv.saved[0].name == "milk"
+    assert inv.saved[0].status == StockStatus.HAVE
+    assert str(inv.saved[0].best_before) == "2026-09-01"
+
+
+def test_inventory_update_readonly_returns_error():
+    class _ReadOnly:
+        def list_items(self):
+            return []
+
+    d = _client(_inv_planner(_ReadOnly())).post("/api/inventory/update",
+                                                json={"items": []}).json()
+    assert "error" in d
