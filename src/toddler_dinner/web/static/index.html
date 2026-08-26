@@ -189,8 +189,10 @@
     /* Small dropdown listing menu options (structured to allow future items). */
     .menu-pop{ position:fixed; top:3.4rem; right:1.1rem; z-index:44; background:var(--paper);
                border:1px solid var(--line); box-shadow:0 8px 24px rgba(33,28,22,.14);
-               min-width:180px; display:none; }
-    .menu-pop.show{ display:block; }
+               min-width:180px; opacity:0; visibility:hidden; transform:translateY(-4px);
+               transition:opacity .18s ease, visibility .18s ease, transform .18s ease; }
+    /* Wait for the hamburger to finish expanding (~.25s) before revealing the options. */
+    .menu-pop.show{ opacity:1; visibility:visible; transform:none; transition-delay:.25s; }
     .menu-pop button{ display:block; width:100%; text-align:left; background:transparent; border:none;
                       font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.16em;
                       font-size:.66rem; color:var(--ink); padding:.85rem 1.1rem; cursor:pointer; }
