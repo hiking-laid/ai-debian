@@ -179,6 +179,30 @@ def api_history(days: int | None = None, planner: Planner = Depends(get_planner)
         return {"error": str(e)}
 
 
+# --- Inventory (read-only viewer, issue #14) --------------------------------
+
+# Location display order for the inventory drawer (fridge, then shelf, then freezer).
+_INVENTORY_LOCATIONS = ("fridge", "shelf", "freezer")
+
+
+@app.get("/api/inventory")
+def api_inventory(planner: Planner = Depends(get_planner)) -> dict:
+    """Current fridge/shelf/freezer contents, grouped by location, for the read-only drawer."""
+    try:
+        items = planner.inventory.list_items()
+        buckets: dict[str, list] = {loc: [] for loc in _INVENTORY_LOCATIONS}
+        for item in items:
+            buckets.setdefault(str(item.location.value), []).append(item)
+        groups = [
+            {"location": loc, "items": buckets[loc]}
+            for loc in _INVENTORY_LOCATIONS
+            if buckets[loc]
+        ]
+        return {"groups": groups}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
 # --- Stickers (post-cook handwritten notes) ---------------------------------
 
 _STICKER_MAX = 280

@@ -165,9 +165,90 @@
       .add-sticker{ position:static; }
       .sticker{ width:180px; }
     }
+
+    /* ---- Hamburger menu + inventory drawer (issue #14) --------------------- */
+    /* Hamburger: three lines that morph into an X when the drawer opens. */
+    .menu-btn{ position:fixed; top:1.1rem; right:1.1rem; z-index:43; width:44px; height:44px;
+               border:1px solid var(--line); background:var(--paper); cursor:pointer; padding:0;
+               display:flex; align-items:center; justify-content:center; }
+    .menu-btn:hover{ border-color:var(--ink); }
+    .menu-btn .bars{ position:relative; width:20px; height:14px; }
+    .menu-btn .bars span{ position:absolute; left:0; width:100%; height:2px; background:var(--ink);
+                          border-radius:1px; transition:transform .3s ease, opacity .2s ease, top .3s ease; }
+    .menu-btn .bars span:nth-child(1){ top:0; }
+    .menu-btn .bars span:nth-child(2){ top:6px; }
+    .menu-btn .bars span:nth-child(3){ top:12px; }
+    /* Morph to X while the drawer is open. */
+    body.drawer-open .menu-btn .bars span:nth-child(1){ top:6px; transform:rotate(45deg); }
+    body.drawer-open .menu-btn .bars span:nth-child(2){ opacity:0; }
+    body.drawer-open .menu-btn .bars span:nth-child(3){ top:6px; transform:rotate(-45deg); }
+    @media (prefers-reduced-motion: reduce){ .menu-btn .bars span{ transition:none; } }
+
+    /* Small dropdown listing menu options (structured to allow future items). */
+    .menu-pop{ position:fixed; top:3.4rem; right:1.1rem; z-index:44; background:var(--paper);
+               border:1px solid var(--line); box-shadow:0 8px 24px rgba(33,28,22,.14);
+               min-width:180px; display:none; }
+    .menu-pop.show{ display:block; }
+    .menu-pop button{ display:block; width:100%; text-align:left; background:transparent; border:none;
+                      font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.16em;
+                      font-size:.66rem; color:var(--ink); padding:.85rem 1.1rem; cursor:pointer; }
+    .menu-pop button:hover{ background:var(--cream); color:var(--bronze); }
+
+    /* Backdrop: blurs and dims the page behind the drawer. */
+    .drawer-backdrop{ position:fixed; inset:0; z-index:41; background:rgba(33,28,22,.28);
+                      backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+                      opacity:0; visibility:hidden; transition:opacity .3s ease, visibility .3s ease; }
+    body.drawer-open .drawer-backdrop{ opacity:1; visibility:visible; }
+
+    /* Right-hand slide-in drawer. */
+    .drawer{ position:fixed; top:0; right:0; z-index:42; height:100vh; width:33vw; min-width:320px;
+             max-width:480px; background:var(--paper); border-left:1px solid var(--line);
+             box-shadow:-12px 0 32px rgba(33,28,22,.14); transform:translateX(100%);
+             transition:transform .32s cubic-bezier(.22,.68,.28,1); display:flex; flex-direction:column;
+             overflow-y:auto; }
+    body.drawer-open .drawer{ transform:translateX(0); }
+    @media (max-width: 640px){ .drawer{ width:92vw; min-width:0; max-width:none; } }
+    @media (prefers-reduced-motion: reduce){ .drawer{ transition:none; } .drawer-backdrop{ transition:none; } }
+
+    .drawer-head{ display:flex; align-items:baseline; justify-content:space-between;
+                  padding:1.6rem 1.5rem 1rem; border-bottom:1px solid var(--line); }
+    .drawer-head h2{ margin:0; display:block; font-family:'Cormorant Garamond',serif; font-style:normal;
+                     font-weight:600; text-transform:none; letter-spacing:.01em; font-size:1.9rem;
+                     color:var(--ink); }
+    .drawer-head h2::before, .drawer-head h2::after{ content:none; }
+    .drawer-body{ padding:1.1rem 1.5rem 2rem; }
+
+    .inv-group{ margin-bottom:1.6rem; }
+    .inv-group > .label{ margin-top:0; }
+    .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
+    .inv-item{ padding:.6rem 0; border-bottom:1px solid var(--line); }
+    .inv-item:last-child{ border-bottom:none; }
+    .inv-row{ display:flex; align-items:baseline; justify-content:space-between; gap:1rem; }
+    .inv-name{ font-family:'Cormorant Garamond',serif; font-size:1.2rem; color:var(--ink); }
+    .inv-qty{ font-family:'Inter',sans-serif; font-size:.82rem; color:var(--muted); white-space:nowrap; }
+    .inv-meta{ margin-top:.25rem; display:flex; flex-wrap:wrap; gap:.35rem; }
+    .inv-meta .tag{ margin-right:0; }
+    .inv-meta .opened{ color:var(--bronze); border-color:var(--bronze); }
   </style>
 </head>
 <body>
+  <button id="menuBtn" class="menu-btn" type="button" aria-label="Open menu"
+          aria-haspopup="true" aria-expanded="false" aria-controls="menuPop" onclick="onMenuButton()">
+    <span class="bars"><span></span><span></span><span></span></span>
+  </button>
+  <div id="menuPop" class="menu-pop" role="menu" aria-label="Menu">
+    <button type="button" role="menuitem" onclick="openInventory()">Inventory</button>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()" hidden></div>
+  <aside id="inventoryDrawer" class="drawer" role="dialog" aria-modal="true"
+         aria-labelledby="drawerTitle" aria-hidden="true" tabindex="-1">
+    <div class="drawer-head">
+      <h2 id="drawerTitle">Inventory</h2>
+    </div>
+    <div id="drawerBody" class="drawer-body"></div>
+  </aside>
+
   <header class="app-header">
     <p class="kicker">Le Petit Dîner</p>
     <h1>Toddler Dinner Planner</h1>
@@ -637,6 +718,108 @@ class StickerLayer {
     this.renderPins();
   }
 }
+
+// ---- hamburger menu + inventory drawer (issue #14) -------------------------
+const LOCATION_LABELS = { fridge:'Fridge', shelf:'Shelf', freezer:'Freezer' };
+let menuOpen = false;
+let drawerOpen = false;
+let lastFocus = null;          // element to restore focus to when the drawer closes
+
+function menuBtnEl(){ return document.getElementById('menuBtn'); }
+
+function openMenu(){
+  menuOpen = true;
+  document.getElementById('menuPop').classList.add('show');
+  menuBtnEl().setAttribute('aria-expanded', 'true');
+}
+function closeMenu(){
+  menuOpen = false;
+  document.getElementById('menuPop').classList.remove('show');
+  menuBtnEl().setAttribute('aria-expanded', 'false');
+}
+function toggleMenu(){ menuOpen ? closeMenu() : openMenu(); }
+
+// The top-right button: acts as an X (close) while the drawer is open, else toggles the menu.
+function onMenuButton(){ drawerOpen ? closeDrawer() : toggleMenu(); }
+
+function openInventory(){
+  closeMenu();
+  openDrawer();
+}
+
+function openDrawer(){
+  if(drawerOpen) return;
+  drawerOpen = true;
+  lastFocus = document.activeElement;
+  const backdrop = document.getElementById('drawerBackdrop');
+  const drawer = document.getElementById('inventoryDrawer');
+  backdrop.hidden = false;
+  document.body.classList.add('drawer-open');
+  drawer.setAttribute('aria-hidden', 'false');
+  menuBtnEl().setAttribute('aria-label', 'Close inventory');
+  drawer.focus();
+  loadInventory();
+}
+
+function closeDrawer(){
+  if(!drawerOpen) return;
+  drawerOpen = false;
+  const backdrop = document.getElementById('drawerBackdrop');
+  const drawer = document.getElementById('inventoryDrawer');
+  document.body.classList.remove('drawer-open');
+  drawer.setAttribute('aria-hidden', 'true');
+  menuBtnEl().setAttribute('aria-label', 'Open menu');
+  // Hide the backdrop from the a11y tree only after the slide-out transition.
+  setTimeout(()=>{ if(!drawerOpen) backdrop.hidden = true; }, 340);
+  if(lastFocus && lastFocus.focus) lastFocus.focus();
+}
+
+async function loadInventory(){
+  const body = document.getElementById('drawerBody');
+  body.innerHTML = '<p class="empty loading">Checking your kitchen…</p>';
+  const d = await api('/api/inventory');
+  if(d.error){ body.innerHTML = `<p class="empty err">Couldn’t load your inventory — ${esc(d.error)}</p>`; return; }
+  const groups = d.groups || [];
+  if(!groups.length){ body.innerHTML = '<p class="empty">Nothing in your fridge yet.</p>'; return; }
+  body.innerHTML = groups.map(g=>{
+    const rows = (g.items||[]).map(invRow).join('');
+    return `<section class="inv-group">
+      <div class="label">${esc(LOCATION_LABELS[g.location] || g.location)}</div>
+      <ul class="inv-list">${rows}</ul></section>`;
+  }).join('');
+}
+
+function invRow(it){
+  const qty = [it.quantity, it.unit].filter(v=>v!=null && v!=='').join(' ');
+  const meta = [];
+  if(it.category) meta.push(`<span class="tag">${esc(it.category)}</span>`);
+  if(it.opened) meta.push('<span class="tag opened">Opened</span>');
+  if(it.best_before) meta.push(`<span class="tag">Best before ${esc(it.best_before)}</span>`);
+  const metaHTML = meta.length ? `<div class="inv-meta">${meta.join('')}</div>` : '';
+  return `<li class="inv-item">
+    <div class="inv-row"><span class="inv-name">${esc(it.name)}</span>${qty ? `<span class="inv-qty">${esc(qty)}</span>` : ''}</div>
+    ${metaHTML}</li>`;
+}
+
+// Esc closes the drawer (or the menu); a11y requirement.
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape') return;
+  if(drawerOpen) closeDrawer();
+  else if(menuOpen) closeMenu();
+});
+// Click outside the menu (but not on the drawer/button) closes the open menu.
+document.addEventListener('pointerdown', (e)=>{
+  if(!menuOpen) return;
+  if(e.target.closest('#menuPop') || e.target.closest('#menuBtn')) return;
+  closeMenu();
+});
+// Keep focus inside the drawer while it's open (simple focus trap).
+document.addEventListener('focusin', (e)=>{
+  if(!drawerOpen) return;
+  const drawer = document.getElementById('inventoryDrawer');
+  if(drawer.contains(e.target) || e.target === menuBtnEl()) return;
+  drawer.focus();
+});
 
 loadHistory();
 </script>
