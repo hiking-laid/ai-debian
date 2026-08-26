@@ -233,8 +233,16 @@
     .inv-group .inv-count{ font-size:.62rem; color:var(--muted); letter-spacing:.1em; }
     .inv-subgroup{ margin:.2rem 0 1rem; }
     .inv-subgroup:last-child{ margin-bottom:.4rem; }
-    .inv-subhead{ font-family:'Cormorant Garamond',serif; font-style:italic; color:var(--muted);
-                  font-size:1rem; margin:.5rem 0 .1rem; text-transform:capitalize; text-align:center; }
+    .inv-subhead{ display:flex; align-items:center; justify-content:center; gap:.55rem;
+                  margin:0 0 .1rem; position:sticky; top:2.55rem; z-index:1; background:var(--paper);
+                  padding:.4rem 0; }
+    .inv-subhead .sh-loc{ font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.2em;
+                          font-size:.6rem; color:var(--bronze); }
+    .inv-subhead .sh-cat{ font-family:'Cormorant Garamond',serif; font-style:italic;
+                          text-transform:capitalize; font-size:1.15rem; color:var(--ink); }
+    /* Small bronze diamond separates location from category. */
+    .inv-subhead .sh-sep{ width:5px; height:5px; background:var(--bronze); transform:rotate(45deg);
+                          flex:0 0 auto; opacity:.85; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0;
                display:grid; grid-template-columns:1fr 1fr; gap:.5rem .7rem; align-items:start; }
@@ -820,12 +828,12 @@ async function loadInventory(){
     const count = (g.items||[]).length;
     return `<details class="inv-group">
       <summary><span class="inv-loc">${label}</span><span class="inv-count">${count}</span></summary>
-      ${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
+      ${invSubgroups(g.items||[], label)}</details>`;   // folded by default (no 'open' attribute)
   }).join('');
 }
 
 // Subgroup a location's items by category, ordered by category name (uncategorised last).
-function invSubgroups(items){
+function invSubgroups(items, locationLabel){
   const byCat = new Map();
   for(const it of items){
     const key = (it.category && String(it.category).trim()) || '';
@@ -836,7 +844,11 @@ function invSubgroups(items){
   const keys = byCat.has('') ? [...named, ''] : named;   // uncategorised group last
   return keys.map(key=>{
     const rows = byCat.get(key).map(invRow).join('');
-    const head = key ? `<div class="inv-subhead">${esc(key)}</div>` : '';
+    // The subhead stays pinned while scrolling, reading "<location> · <category>".
+    const head = key
+      ? `<div class="inv-subhead"><span class="sh-loc">${locationLabel}</span>`
+        + `<span class="sh-sep" aria-hidden="true"></span>`
+        + `<span class="sh-cat">${esc(key)}</span></div>` : '';
     return `<div class="inv-subgroup">${head}<ul class="inv-list">${rows}</ul></div>`;
   }).join('');
 }
