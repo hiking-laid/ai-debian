@@ -234,20 +234,32 @@
     .inv-subhead{ font-family:'Cormorant Garamond',serif; font-style:italic; color:var(--muted);
                   font-size:1rem; margin:.5rem 0 .1rem; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
-    .inv-item{ padding:.6rem 0; border-bottom:1px solid var(--line); }
-    .inv-item:last-child{ border-bottom:none; }
-    .inv-row{ display:flex; align-items:baseline; justify-content:space-between; gap:1rem; }
-    .inv-name{ font-family:'Cormorant Garamond',serif; font-size:1.2rem; color:var(--ink); }
+    .inv-list{ list-style:none; margin:.4rem 0 0; padding:0;
+               display:grid; grid-template-columns:1fr 1fr; gap:.5rem .7rem; align-items:start; }
+    .inv-item{ min-width:0; }
+    /* Each item is a clickable panel; clicking reveals its detail below. */
+    .inv-panel{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:.4rem;
+                background:var(--cream); border:1px solid var(--line); padding:.5rem .6rem;
+                cursor:pointer; text-align:left; font:inherit; color:inherit; }
+    .inv-panel:hover{ border-color:var(--bronze); }
+    .inv-panel[aria-expanded="true"]{ border-color:var(--bronze); background:var(--paper); }
+    .inv-name{ font-family:'Cormorant Garamond',serif; font-size:1.15rem; color:var(--ink);
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+    .inv-caret{ flex:0 0 auto; color:var(--muted); font-size:.9rem; line-height:1; }
+    .inv-caret::after{ content:"+"; }
+    .inv-panel[aria-expanded="true"] .inv-caret::after{ content:"\2013"; }
     /* Stock status shown as a traffic-light dot: full=have, ring=low, empty=none. */
     .inv-dot{ display:inline-block; width:.6rem; height:.6rem; border-radius:50%; margin-right:.5rem;
-              vertical-align:middle; border:1.5px solid var(--muted); background:transparent; }
+              vertical-align:middle; border:1.5px solid var(--muted); background:transparent; flex:0 0 auto; }
     .inv-dot.have{ background:#5c8a4a; border-color:#5c8a4a; }
     .inv-dot.low{ background:radial-gradient(circle, #c98a2b 0 42%, transparent 46%); border-color:#c98a2b; }
     .inv-dot.none{ background:transparent; border-color:#a3372f; }
-    .inv-qty{ font-family:'Inter',sans-serif; font-size:.82rem; color:var(--muted); white-space:nowrap; }
-    .inv-meta{ margin-top:.25rem; display:flex; flex-wrap:wrap; gap:.35rem; }
-    .inv-meta .tag{ margin-right:0; }
-    .inv-meta .opened{ color:var(--bronze); border-color:var(--bronze); }
+    .inv-detail{ border:1px solid var(--line); border-top:none; background:var(--paper);
+                 padding:.5rem .6rem .6rem; }
+    .inv-drow{ display:flex; justify-content:space-between; gap:.8rem; font-family:'Inter',sans-serif;
+               font-size:.72rem; padding:.18rem 0; }
+    .inv-drow .inv-k{ text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
+    .inv-drow .inv-v{ color:var(--ink); text-align:right; }
   </style>
 </head>
 <body>
@@ -828,17 +840,32 @@ function invSubgroups(items){
 }
 
 function invRow(it){
-  const qty = [it.quantity, it.unit].filter(v=>v!=null && v!=='').join(' ');
   const status = String(it.status || 'have').toLowerCase();
-  const label = STATUS_LABELS[status] || status;
-  const dot = `<span class="inv-dot ${esc(status)}" role="img" aria-label="${esc(label)}" title="${esc(label)}"></span>`;
-  const meta = [];
-  if(it.opened) meta.push('<span class="tag opened">Opened</span>');
-  if(it.best_before) meta.push(`<span class="tag">Best before ${esc(it.best_before)}</span>`);
-  const metaHTML = meta.length ? `<div class="inv-meta">${meta.join('')}</div>` : '';
+  const slabel = STATUS_LABELS[status] || status;
+  const dot = `<span class="inv-dot ${esc(status)}" role="img" aria-label="${esc(slabel)}" title="${esc(slabel)}"></span>`;
+  const qty = [it.quantity, it.unit].filter(v=>v!=null && v!=='').join(' ');
+  const rows = [invDetailRow('Status', slabel)];
+  if(qty) rows.push(invDetailRow('Quantity', qty));
+  if(it.best_before) rows.push(invDetailRow('Best before', it.best_before));
+  if(it.opened) rows.push(invDetailRow('Opened', 'Yes'));
+  if(it.category) rows.push(invDetailRow('Category', it.category));
   return `<li class="inv-item">
-    <div class="inv-row"><span class="inv-name">${dot}${esc(it.name)}</span>${qty ? `<span class="inv-qty">${esc(qty)}</span>` : ''}</div>
-    ${metaHTML}</li>`;
+    <button class="inv-panel" type="button" aria-expanded="false" onclick="toggleInvItem(this)">
+      <span class="inv-name">${dot}${esc(it.name)}</span><span class="inv-caret" aria-hidden="true"></span>
+    </button>
+    <div class="inv-detail" hidden>${rows.join('')}</div>
+  </li>`;
+}
+
+function invDetailRow(k, v){
+  return `<div class="inv-drow"><span class="inv-k">${esc(k)}</span><span class="inv-v">${esc(v)}</span></div>`;
+}
+
+function toggleInvItem(btn){
+  const open = btn.getAttribute('aria-expanded') === 'true';
+  btn.setAttribute('aria-expanded', String(!open));
+  const detail = btn.nextElementSibling;
+  if(detail) detail.hidden = open;
 }
 
 // Esc closes the drawer (or the menu); a11y requirement.
