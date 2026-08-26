@@ -218,8 +218,21 @@
     .drawer-head h2::before, .drawer-head h2::after{ content:none; }
     .drawer-body{ padding:1.1rem 1.5rem 2rem; }
 
-    .inv-group{ margin-bottom:1.6rem; }
-    .inv-group > .label{ margin-top:0; }
+    .inv-group{ margin-bottom:.9rem; border-top:1px solid var(--line); }
+    /* Each location folds by default; the summary is the tappable header. */
+    .inv-group > summary{ list-style:none; cursor:pointer; display:flex; align-items:center;
+                          justify-content:space-between; gap:.8rem; padding:.9rem 0;
+                          font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.22em;
+                          font-size:.66rem; color:var(--bronze); }
+    .inv-group > summary::-webkit-details-marker{ display:none; }
+    .inv-group > summary::after{ content:"+"; font-size:1rem; letter-spacing:0; color:var(--muted); }
+    .inv-group[open] > summary::after{ content:"\2013"; }   /* en dash when expanded */
+    .inv-group .inv-loc{ display:flex; align-items:center; gap:.6rem; }
+    .inv-group .inv-count{ font-size:.62rem; color:var(--muted); letter-spacing:.1em; }
+    .inv-subgroup{ margin:.2rem 0 1rem; }
+    .inv-subgroup:last-child{ margin-bottom:.4rem; }
+    .inv-subhead{ font-family:'Cormorant Garamond',serif; font-style:italic; color:var(--muted);
+                  font-size:1rem; margin:.5rem 0 .1rem; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
     .inv-item{ padding:.6rem 0; border-bottom:1px solid var(--line); }
     .inv-item:last-child{ border-bottom:none; }
@@ -782,17 +795,34 @@ async function loadInventory(){
   const groups = d.groups || [];
   if(!groups.length){ body.innerHTML = '<p class="empty">Nothing in your fridge yet.</p>'; return; }
   body.innerHTML = groups.map(g=>{
-    const rows = (g.items||[]).map(invRow).join('');
-    return `<section class="inv-group">
-      <div class="label">${esc(LOCATION_LABELS[g.location] || g.location)}</div>
-      <ul class="inv-list">${rows}</ul></section>`;
+    const label = esc(LOCATION_LABELS[g.location] || g.location);
+    const count = (g.items||[]).length;
+    return `<details class="inv-group">
+      <summary><span class="inv-loc">${label}</span><span class="inv-count">${count}</span></summary>
+      ${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
+  }).join('');
+}
+
+// Subgroup a location's items by category, ordered by category name (uncategorised last).
+function invSubgroups(items){
+  const byCat = new Map();
+  for(const it of items){
+    const key = (it.category && String(it.category).trim()) || '';
+    if(!byCat.has(key)) byCat.set(key, []);
+    byCat.get(key).push(it);
+  }
+  const named = [...byCat.keys()].filter(k=>k).sort((a,b)=>a.localeCompare(b));
+  const keys = byCat.has('') ? [...named, ''] : named;   // uncategorised group last
+  return keys.map(key=>{
+    const rows = byCat.get(key).map(invRow).join('');
+    const head = key ? `<div class="inv-subhead">${esc(key)}</div>` : '';
+    return `<div class="inv-subgroup">${head}<ul class="inv-list">${rows}</ul></div>`;
   }).join('');
 }
 
 function invRow(it){
   const qty = [it.quantity, it.unit].filter(v=>v!=null && v!=='').join(' ');
   const meta = [];
-  if(it.category) meta.push(`<span class="tag">${esc(it.category)}</span>`);
   if(it.opened) meta.push('<span class="tag opened">Opened</span>');
   if(it.best_before) meta.push(`<span class="tag">Best before ${esc(it.best_before)}</span>`);
   const metaHTML = meta.length ? `<div class="inv-meta">${meta.join('')}</div>` : '';
