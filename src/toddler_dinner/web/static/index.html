@@ -229,20 +229,19 @@
     .inv-group > summary::-webkit-details-marker{ display:none; }
     .inv-group > summary::after{ content:"+"; font-size:1rem; letter-spacing:0; color:var(--muted); }
     .inv-group[open] > summary::after{ content:"\2013"; }   /* en dash when expanded */
-    .inv-group .inv-loc{ display:flex; align-items:center; gap:.6rem; }
-    .inv-group .inv-count{ font-size:.62rem; color:var(--muted); letter-spacing:.1em; }
+    .inv-group .inv-loc{ display:flex; align-items:center; gap:.55rem; }
+    /* Category name that fades in beside the location as you scroll a category. */
+    .inv-loc .loc-cat{ display:inline-flex; align-items:center; gap:.55rem;
+                       opacity:0; transition:opacity .3s ease; }
+    .inv-loc .loc-cat.show{ opacity:1; }
+    .inv-loc .loc-sep{ width:5px; height:5px; background:var(--bronze); transform:rotate(45deg);
+                       flex:0 0 auto; opacity:.85; }
+    .inv-loc .loc-cat-name{ text-transform:capitalize; letter-spacing:.14em; color:var(--muted); }
     .inv-subgroup{ margin:.2rem 0 1rem; }
     .inv-subgroup:last-child{ margin-bottom:.4rem; }
-    .inv-subhead{ display:flex; align-items:center; justify-content:center; gap:.55rem;
-                  margin:0 0 .1rem; position:sticky; top:2.55rem; z-index:1; background:var(--paper);
-                  padding:.4rem 0; }
-    .inv-subhead .sh-loc{ font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.2em;
-                          font-size:.6rem; color:var(--bronze); }
-    .inv-subhead .sh-cat{ font-family:'Cormorant Garamond',serif; font-style:italic;
-                          text-transform:capitalize; font-size:1.15rem; color:var(--ink); }
-    /* Small bronze diamond separates location from category. */
-    .inv-subhead .sh-sep{ width:5px; height:5px; background:var(--bronze); transform:rotate(45deg);
-                          flex:0 0 auto; opacity:.85; }
+    .inv-subhead{ text-align:center; margin:0 0 .1rem; position:sticky; top:2.55rem; z-index:1;
+                  background:var(--paper); padding:.4rem 0; font-family:'Cormorant Garamond',serif;
+                  font-style:italic; text-transform:capitalize; font-size:1.15rem; color:var(--ink); }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0;
                display:grid; grid-template-columns:1fr 1fr; gap:.5rem .7rem; align-items:start; }
@@ -825,15 +824,18 @@ async function loadInventory(){
   if(!groups.length){ body.innerHTML = '<p class="empty">Nothing in your fridge yet.</p>'; return; }
   body.innerHTML = groups.map(g=>{
     const label = esc(LOCATION_LABELS[g.location] || g.location);
-    const count = (g.items||[]).length;
     return `<details class="inv-group">
-      <summary><span class="inv-loc">${label}</span><span class="inv-count">${count}</span></summary>
-      ${invSubgroups(g.items||[], label)}</details>`;   // folded by default (no 'open' attribute)
+      <summary><span class="inv-loc"><span class="loc-name">${label}</span><span class="loc-cat"></span></span></summary>
+      ${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
   }).join('');
+  // Re-sync the pinned "location · category" label to the current scroll position.
+  requestAnimationFrame(updateStickyCats);
+  document.getElementById('inventoryDrawer')
+    .querySelectorAll('.inv-group').forEach(d=>d.addEventListener('toggle', updateStickyCats));
 }
 
 // Subgroup a location's items by category, ordered by category name (uncategorised last).
-function invSubgroups(items, locationLabel){
+function invSubgroups(items){
   const byCat = new Map();
   for(const it of items){
     const key = (it.category && String(it.category).trim()) || '';
@@ -844,13 +846,38 @@ function invSubgroups(items, locationLabel){
   const keys = byCat.has('') ? [...named, ''] : named;   // uncategorised group last
   return keys.map(key=>{
     const rows = byCat.get(key).map(invRow).join('');
-    // The subhead stays pinned while scrolling, reading "<location> · <category>".
-    const head = key
-      ? `<div class="inv-subhead"><span class="sh-loc">${locationLabel}</span>`
-        + `<span class="sh-sep" aria-hidden="true"></span>`
-        + `<span class="sh-cat">${esc(key)}</span></div>` : '';
-    return `<div class="inv-subgroup">${head}<ul class="inv-list">${rows}</ul></div>`;
+    // Second sticky line: the category name only (uncategorised has no subhead).
+    const head = key ? `<div class="inv-subhead">${esc(key)}</div>` : '';
+    return `<div class="inv-subgroup" data-cat="${key ? esc(key) : ''}">${head}<ul class="inv-list">${rows}</ul></div>`;
   }).join('');
+}
+
+// Keep the location bar's fade-in category in sync with the scroll position.
+function updateStickyCats(){
+  const drawer = document.getElementById('inventoryDrawer');
+  if(!drawer) return;
+  drawer.querySelectorAll('.inv-group').forEach(g=>{
+    const slot = g.querySelector('.loc-cat');
+    if(!slot) return;
+    if(!g.open){ setLocCat(slot, ''); return; }
+    const threshold = g.querySelector('summary').getBoundingClientRect().bottom;   // bottom of pinned bar
+    let active = '';
+    g.querySelectorAll('.inv-subgroup').forEach(sub=>{
+      const r = sub.getBoundingClientRect();
+      if(r.top <= threshold + 1 && r.bottom > threshold) active = sub.dataset.cat || '';
+    });
+    setLocCat(slot, active);
+  });
+}
+function setLocCat(slot, cat){
+  if((slot.dataset.cat || '') === cat) return;
+  slot.dataset.cat = cat;
+  if(cat){
+    slot.innerHTML = `<span class="loc-sep" aria-hidden="true"></span><span class="loc-cat-name">${esc(cat)}</span>`;
+    slot.classList.add('show');
+  } else {
+    slot.classList.remove('show'); slot.innerHTML = '';
+  }
 }
 
 function invRow(it){
@@ -901,6 +928,8 @@ document.addEventListener('focusin', (e)=>{
   if(drawer.contains(e.target) || e.target === menuBtnEl()) return;
   drawer.focus();
 });
+// Sync the fade-in category label as the drawer scrolls.
+document.getElementById('inventoryDrawer').addEventListener('scroll', updateStickyCats, {passive:true});
 
 loadHistory();
 </script>
