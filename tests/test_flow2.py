@@ -170,15 +170,27 @@ def test_none_staple_still_exempt_from_buying():
 
 def test_draw_fridge_aware_prefers_fewest_missing():
     in_fridge = _recipe("Chicken Rice", [("chicken", 1, "ea"), ("rice", 1, "ea")])
-    needs_shop = _recipe("Beef Stew", [("beef", 1, "ea"), ("potato", 1, "ea")])
+    # 3 items to buy -> beyond the tolerance band, so it's never drawn while a 0-shop recipe exists.
+    needs_shop = _recipe("Beef Stew", [("beef", 1, "ea"), ("potato", 1, "ea"), ("carrot", 1, "ea")])
     items = [InventoryItem(name="chicken", quantity=1, unit="ea"),
              InventoryItem(name="rice", quantity=1, unit="ea")]
     p = _planner([in_fridge, needs_shop], items)
-    # Fridge-aware random still always lands on the fully-stocked recipe (fewest-missing tier).
+    # Fridge-aware random still always lands on the fully-stocked recipe (far-off recipe excluded).
     for _ in range(20):
         d = p.draw_from_cookbook(fridge_aware=True)
         assert d.recipe.title == "Chicken Rice"
         assert d.missing == [] and d.repeat is False and d.empty is False
+
+
+def test_draw_fridge_aware_varies_within_tolerance():
+    # Two recipes within the tolerance band (0 and 1 items to buy) should both surface over draws.
+    a = _recipe("Chicken Rice", [("chicken", 1, "ea"), ("rice", 1, "ea")])       # 0 missing
+    b = _recipe("Chicken Peas", [("chicken", 1, "ea"), ("peas", 1, "ea")])       # 1 missing
+    items = [InventoryItem(name="chicken", quantity=1, unit="ea"),
+             InventoryItem(name="rice", quantity=1, unit="ea")]
+    p = _planner([a, b], items)
+    seen = {p.draw_from_cookbook(fridge_aware=True).recipe.title for _ in range(60)}
+    assert seen == {"Chicken Rice", "Chicken Peas"}
 
 
 def test_draw_wildcard_ignores_fridge_and_honours_exclude():

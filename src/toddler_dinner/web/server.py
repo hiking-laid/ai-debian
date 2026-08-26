@@ -71,6 +71,10 @@ class FeelingLuckyBody(BaseModel):
     exclude: list[str] | None = None   # title(s) of the on-screen recipe to avoid re-drawing
 
 
+class DrawBody(BaseModel):
+    exclude: list[str] | None = None   # title(s) currently on screen, to avoid re-drawing
+
+
 # Shown when the cookbook has nothing valid to draw (issue #13, Case 1).
 _EMPTY_COOKBOOK_MSG = (
     "Your cookbook has no dinner to draw yet \u2014 tap \u201cNew Idea\u201d to generate a fresh recipe."
@@ -93,10 +97,11 @@ def _tonight_from_draw(draw) -> dict:
 
 
 @app.post("/api/tonight")
-def api_tonight(planner: Planner = Depends(get_planner)) -> dict:
+def api_tonight(body: DrawBody | None = None, planner: Planner = Depends(get_planner)) -> dict:
     """Draw tonight's dinner from the cookbook (fridge-aware random, variety from today)."""
     try:
-        draw = planner.draw_from_cookbook(fridge_aware=True)
+        exclude = body.exclude if body else None
+        draw = planner.draw_from_cookbook(fridge_aware=True, exclude_titles=exclude)
         if draw.recipe is None:
             return {"message": _EMPTY_COOKBOOK_MSG}
         return _tonight_from_draw(draw)
@@ -136,11 +141,14 @@ def api_feeling_lucky(body: FeelingLuckyBody, planner: Planner = Depends(get_pla
 
 
 @app.post("/api/plan-tomorrow")
-def api_plan(planner: Planner = Depends(get_planner)) -> dict:
+def api_plan(body: DrawBody | None = None, planner: Planner = Depends(get_planner)) -> dict:
     """Draw tomorrow's dinner from the cookbook (fridge-aware random, variety from tomorrow)."""
     try:
+        exclude = body.exclude if body else None
         for_date = planner.today() + timedelta(days=1)
-        draw = planner.draw_from_cookbook(for_date=for_date, fridge_aware=True)
+        draw = planner.draw_from_cookbook(
+            for_date=for_date, fridge_aware=True, exclude_titles=exclude
+        )
         if draw.recipe is None:
             return {"message": _EMPTY_COOKBOOK_MSG}
         payload = _plan_payload(planner.build_plan(draw.recipe, for_date))

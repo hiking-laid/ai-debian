@@ -473,7 +473,7 @@ function render(d){
 // ---- actions ---------------------------------------------------------------
 async function tonight(){ mode='tonight'; setBusy(true); render(await api('/api/tonight', {})); }
 async function newIdea(){ mode='tonight'; setBusy(true); render(await api('/api/new-idea', {})); }
-async function planTomorrow(){ mode='plan'; setBusy(true); render(await api('/api/plan-tomorrow', {})); }
+async function planTomorrow(){ mode='plan'; setBusy(true); render(await api('/api/plan-tomorrow', {exclude: current ? [current.title] : null})); }
 async function feelingLucky(){ setBusy(true); render(await api('/api/feeling-lucky', {mode, exclude: current ? [current.title] : null})); }
 
 async function save(){
