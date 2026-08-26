@@ -166,6 +166,10 @@ _COOKING_STYLES = (
     "mild curry", "pasta-based", "rice bowl", "mash", "fritter or patty",
 )
 
+# Fridge-aware draws pick randomly among recipes within this many extra items-to-buy of the
+# best-stocked recipe — enough variety across clicks without piling on the shopping list.
+_FRIDGE_TOLERANCE = 2
+
 
 class Planner:
     """Bundles providers + repos so actions have a single entry point."""
@@ -274,12 +278,12 @@ class Planner:
 
         items = self.inventory.list_items()
         if fridge_aware:
-            # Random tie-break among the recipes with the best fridge overlap (fewest missing).
-            tiers: dict[int, list[tuple[Recipe, list[str]]]] = {}
-            for r in pool:
-                miss = [i.name for i in missing_ingredients(r, items)]
-                tiers.setdefault(len(miss), []).append((r, miss))
-            recipe, missing = random.choice(tiers[min(tiers)])
+            # Random among recipes within a small tolerance of the best fridge overlap, so
+            # repeated draws vary while still favouring low-shop dinners.
+            scored = [(r, [i.name for i in missing_ingredients(r, items)]) for r in pool]
+            fewest = min(len(m) for _, m in scored)
+            band = [(r, m) for r, m in scored if len(m) <= fewest + _FRIDGE_TOLERANCE]
+            recipe, missing = random.choice(band)
         else:
             recipe = random.choice(pool)
             missing = [i.name for i in missing_ingredients(recipe, items)]

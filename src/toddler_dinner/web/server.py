@@ -12,8 +12,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from toddler_dinner.app import build_planner
-from toddler_dinner.core import Planner
-from toddler_dinner.models import STICKER_SECTIONS, Recipe
+from toddler_dinner.core import Planner, missing_ingredients
+from toddler_dinner.models import STICKER_SECTIONS, InventoryItem, Recipe
 from toddler_dinner.routing import Action, route
 
 app = FastAPI(title="Toddler Dinner Planner")
@@ -71,6 +71,10 @@ class FeelingLuckyBody(BaseModel):
     exclude: list[str] | None = None   # title(s) of the on-screen recipe to avoid re-drawing
 
 
+class DrawBody(BaseModel):
+    exclude: list[str] | None = None   # title(s) currently on screen, to avoid re-drawing
+
+
 # Shown when the cookbook has nothing valid to draw (issue #13, Case 1).
 _EMPTY_COOKBOOK_MSG = (
     "Your cookbook has no dinner to draw yet \u2014 tap \u201cNew Idea\u201d to generate a fresh recipe."
@@ -93,10 +97,11 @@ def _tonight_from_draw(draw) -> dict:
 
 
 @app.post("/api/tonight")
-def api_tonight(planner: Planner = Depends(get_planner)) -> dict:
+def api_tonight(body: DrawBody | None = None, planner: Planner = Depends(get_planner)) -> dict:
     """Draw tonight's dinner from the cookbook (fridge-aware random, variety from today)."""
     try:
-        draw = planner.draw_from_cookbook(fridge_aware=True)
+        exclude = body.exclude if body else None
+        draw = planner.draw_from_cookbook(fridge_aware=True, exclude_titles=exclude)
         if draw.recipe is None:
             return {"message": _EMPTY_COOKBOOK_MSG}
         return _tonight_from_draw(draw)
@@ -106,9 +111,11 @@ def api_tonight(planner: Planner = Depends(get_planner)) -> dict:
 
 @app.post("/api/new-idea")
 def api_new_idea(planner: Planner = Depends(get_planner)) -> dict:
-    """Generate a brand-new recipe via the LLM (unsaved suggestion)."""
+    """Generate a brand-new recipe via the LLM (unsaved suggestion) + what you'd need to buy."""
     try:
-        return {"recipe": planner.another_idea(), "source": "fresh"}
+        recipe = planner.another_idea()
+        missing = [i.name for i in missing_ingredients(recipe, planner.inventory.list_items())]
+        return {"recipe": recipe, "source": "fresh", "missing": missing}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 
@@ -136,11 +143,15 @@ def api_feeling_lucky(body: FeelingLuckyBody, planner: Planner = Depends(get_pla
 
 
 @app.post("/api/plan-tomorrow")
-def api_plan(planner: Planner = Depends(get_planner)) -> dict:
-    """Draw tomorrow's dinner from the cookbook (fridge-aware random, variety from tomorrow)."""
+def api_plan(body: DrawBody | None = None, planner: Planner = Depends(get_planner)) -> dict:
+    """Draw tomorrow's dinner from the whole cookbook (planning implies shopping), then list
+    the groceries needed. Not fridge-limited, so saved recipes that need shopping can surface."""
     try:
+        exclude = body.exclude if body else None
         for_date = planner.today() + timedelta(days=1)
-        draw = planner.draw_from_cookbook(for_date=for_date, fridge_aware=True)
+        draw = planner.draw_from_cookbook(
+            for_date=for_date, fridge_aware=False, exclude_titles=exclude
+        )
         if draw.recipe is None:
             return {"message": _EMPTY_COOKBOOK_MSG}
         payload = _plan_payload(planner.build_plan(draw.recipe, for_date))
@@ -175,6 +186,47 @@ def api_history(days: int | None = None, planner: Planner = Depends(get_planner)
     """Recent cooked dinners (full recipes) for the history view."""
     try:
         return {"entries": planner.recent_cooked(days)}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+# --- Inventory (read-only viewer, issue #14) --------------------------------
+
+# Location display order for the inventory drawer (fridge, then shelf, then freezer).
+_INVENTORY_LOCATIONS = ("fridge", "shelf", "freezer")
+
+
+@app.get("/api/inventory")
+def api_inventory(planner: Planner = Depends(get_planner)) -> dict:
+    """Current fridge/shelf/freezer contents, grouped by location, for the read-only drawer."""
+    try:
+        items = planner.inventory.list_items()
+        buckets: dict[str, list] = {loc: [] for loc in _INVENTORY_LOCATIONS}
+        for item in items:
+            buckets.setdefault(str(item.location.value), []).append(item)
+        groups = [
+            {"location": loc, "items": buckets[loc]}
+            for loc in _INVENTORY_LOCATIONS
+            if buckets[loc]
+        ]
+        return {"groups": groups}
+    except Exception as e:  # noqa: BLE001
+        return {"error": str(e)}
+
+
+class InventoryUpdate(BaseModel):
+    items: list[InventoryItem]   # full items with edited status / best_before
+
+
+@app.post("/api/inventory/update")
+def api_inventory_update(body: InventoryUpdate, planner: Planner = Depends(get_planner)) -> dict:
+    """Persist edited inventory items (status / best-before) as one atomic upsert."""
+    try:
+        repo = planner.inventory
+        if not hasattr(repo, "upsert_many"):
+            return {"error": "Inventory is read-only in this configuration."}
+        updated = repo.upsert_many(body.items)
+        return {"ok": True, "updated": updated}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 

@@ -80,7 +80,7 @@
     .chatrow input:focus{ outline:none; border-color:var(--bronze); }
     .chatrow button{ font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.13em; font-size:.64rem; padding:.55rem 1.1rem; border:1px solid var(--ink); background:transparent; cursor:pointer; }
 
-    #toast{ position:fixed; bottom:1.6rem; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:.75rem 1.3rem; font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; opacity:0; transition:opacity .2s; pointer-events:none; }
+    #toast{ position:fixed; bottom:1.6rem; left:50%; transform:translateX(-50%); z-index:60; background:var(--ink); color:var(--cream); padding:.75rem 1.3rem; font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; opacity:0; transition:opacity .2s; pointer-events:none; }
     #toast.show{ opacity:.97; }
     .empty{ font-family:'Cormorant Garamond',serif; font-style:italic; color:var(--muted); font-size:1.1rem; }
     .empty.err{ color:#a3372f; }
@@ -165,9 +165,173 @@
       .add-sticker{ position:static; }
       .sticker{ width:180px; }
     }
+
+    /* ---- Hamburger menu + inventory drawer (issue #14) --------------------- */
+    /* Hamburger: three lines that morph into an X when the drawer opens. */
+    .menu-btn{ position:fixed; top:1.1rem; right:1.1rem; z-index:43; width:44px; height:44px;
+               border:1px solid var(--line); background:var(--paper); cursor:pointer; padding:0;
+               display:flex; align-items:center; justify-content:center; transition:width .25s ease; }
+    .menu-btn:hover{ border-color:var(--ink); }
+    /* When the menu is open, widen the button to align with the dropdown below it. */
+    .menu-btn[aria-expanded="true"]{ width:180px; }
+    .menu-btn .bars{ position:relative; width:20px; height:14px; }
+    .menu-btn .bars span{ position:absolute; left:0; width:100%; height:2px; background:var(--ink);
+                          border-radius:1px; transition:transform .3s ease, opacity .2s ease, top .3s ease; }
+    .menu-btn .bars span:nth-child(1){ top:0; }
+    .menu-btn .bars span:nth-child(2){ top:6px; }
+    .menu-btn .bars span:nth-child(3){ top:12px; }
+    /* Morph to X while the drawer is open. */
+    body.drawer-open .menu-btn .bars span:nth-child(1){ top:6px; transform:rotate(45deg); }
+    body.drawer-open .menu-btn .bars span:nth-child(2){ opacity:0; }
+    body.drawer-open .menu-btn .bars span:nth-child(3){ top:6px; transform:rotate(-45deg); }
+    @media (prefers-reduced-motion: reduce){ .menu-btn .bars span{ transition:none; } }
+
+    /* Small dropdown listing menu options (structured to allow future items). */
+    .menu-pop{ position:fixed; top:3.4rem; right:1.1rem; z-index:44; background:var(--paper);
+               border:1px solid var(--line); box-shadow:0 8px 24px rgba(33,28,22,.14);
+               min-width:180px; opacity:0; visibility:hidden; transform:translateY(-4px);
+               transition:opacity .18s ease, visibility .18s ease, transform .18s ease; }
+    /* Wait for the hamburger to finish expanding (~.25s) before revealing the options. */
+    .menu-pop.show{ opacity:1; visibility:visible; transform:none; transition-delay:.25s; }
+    .menu-pop button{ display:block; width:100%; text-align:left; background:transparent; border:none;
+                      font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.16em;
+                      font-size:.66rem; color:var(--ink); padding:.85rem 1.1rem; cursor:pointer; }
+    .menu-pop button:hover{ background:var(--cream); color:var(--bronze); }
+
+    /* Backdrop: blurs and dims the page behind the drawer. */
+    .drawer-backdrop{ position:fixed; inset:0; z-index:41; background:rgba(33,28,22,.28);
+                      backdrop-filter:blur(4px); -webkit-backdrop-filter:blur(4px);
+                      opacity:0; visibility:hidden; transition:opacity .3s ease, visibility .3s ease; }
+    body.drawer-open .drawer-backdrop{ opacity:1; visibility:visible; }
+
+    /* Right-hand slide-in drawer. */
+    .drawer{ position:fixed; top:0; right:0; z-index:42; height:100vh; width:33vw; min-width:320px;
+             max-width:480px; background:var(--paper); border-left:1px solid var(--line);
+             box-shadow:-12px 0 32px rgba(33,28,22,.14); transform:translateX(100%);
+             transition:transform .32s cubic-bezier(.22,.68,.28,1); display:flex; flex-direction:column;
+             overflow-y:auto; }
+    body.drawer-open .drawer{ transform:translateX(0); }
+    @media (max-width: 640px){ .drawer{ width:92vw; min-width:0; max-width:none; } }
+    @media (prefers-reduced-motion: reduce){ .drawer{ transition:none; } .drawer-backdrop{ transition:none; } }
+
+    .drawer-head{ display:flex; align-items:baseline; justify-content:space-between;
+                  padding:1.6rem 1.5rem 1rem; border-bottom:1px solid var(--line); }
+    .drawer-head h2{ margin:0; display:block; font-family:'Cormorant Garamond',serif; font-style:normal;
+                     font-weight:600; text-transform:none; letter-spacing:.01em; font-size:1.9rem;
+                     color:var(--ink); }
+    .drawer-head h2::before, .drawer-head h2::after{ content:none; }
+    .drawer-body{ padding:1.1rem 1.5rem 2rem; }
+
+    .inv-group{ margin-bottom:.9rem; border-top:1px solid var(--line); }
+    /* Each location folds by default; the summary is the tappable header. */
+    .inv-group > summary{ list-style:none; cursor:pointer; display:flex; align-items:center;
+                          gap:.5rem; padding:.9rem 0;
+                          font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.22em;
+                          font-size:.66rem; color:var(--bronze);
+                          position:sticky; top:0; z-index:2; background:var(--paper);
+                          border-bottom:1px solid var(--line); }
+    .inv-group > summary::-webkit-details-marker{ display:none; }
+    .inv-group > summary::after{ content:"+"; font-size:1rem; letter-spacing:0; color:var(--muted);
+                                 margin-left:auto; }   /* fold indicator pinned to the far right */
+    .inv-group[open] > summary::after{ content:"\2013"; }   /* en dash when expanded */
+    /* Pencil (edit) → check (save) button, sits just right of the location(+category). */
+    .loc-edit{ flex:0 0 auto; width:26px; height:26px; display:inline-flex; align-items:center;
+               justify-content:center; border:1px solid var(--line); background:var(--paper);
+               color:var(--bronze); cursor:pointer; padding:0; font-size:.85rem; line-height:1;
+               transition:margin-left .3s ease; }
+    .loc-edit::before{ content:"\270E"; }                    /* pencil */
+    .loc-edit:hover{ border-color:var(--bronze); }
+    .inv-group.editing .loc-edit{ background:var(--bronze); color:var(--paper); border-color:var(--bronze); }
+    .inv-group.editing .loc-edit::before{ content:"\2713"; } /* check = save */
+    .inv-group .inv-loc{ display:flex; align-items:center; gap:.55rem; }
+    /* Category name that fades in beside the location as you scroll a category. */
+    .inv-loc .loc-cat{ display:inline-flex; align-items:center; gap:.55rem;
+                       opacity:0; transition:opacity .3s ease; }
+    .inv-loc .loc-cat.show{ opacity:1; }
+    .inv-loc .loc-sep{ width:5px; height:5px; background:var(--bronze); transform:rotate(45deg);
+                       flex:0 0 auto; opacity:.85; }
+    .inv-loc .loc-cat-name{ text-transform:capitalize; letter-spacing:.14em; color:var(--muted); }
+    .inv-subgroup{ margin:.2rem 0 1rem; }
+    .inv-subgroup:last-child{ margin-bottom:.4rem; }
+    .inv-subhead{ text-align:center; margin:0 0 .1rem; padding:.4rem 0;
+                  font-family:'Cormorant Garamond',serif; font-style:italic;
+                  text-transform:capitalize; font-size:1.15rem; color:var(--ink); }
+    .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
+    .inv-list{ list-style:none; margin:.4rem 0 0; padding:0;
+               display:grid; grid-template-columns:1fr 1fr; gap:.5rem .7rem; align-items:start; }
+    .inv-item{ min-width:0; }
+    /* Each item is a clickable panel; clicking reveals its detail below. */
+    .inv-panel{ width:100%; display:flex; align-items:center; justify-content:space-between; gap:.4rem;
+                background:var(--cream); border:1px solid var(--line); padding:.5rem .6rem;
+                cursor:pointer; text-align:left; font:inherit; color:inherit; }
+    .inv-panel:hover{ border-color:var(--bronze); }
+    .inv-panel[aria-expanded="true"]{ border-color:var(--bronze); background:var(--paper); }
+    .inv-name{ font-family:'Cormorant Garamond',serif; font-size:1.15rem; color:var(--ink);
+               white-space:nowrap; overflow:hidden; text-overflow:ellipsis; min-width:0; }
+    .inv-caret{ flex:0 0 auto; color:var(--muted); font-size:.9rem; line-height:1; }
+    .inv-caret::after{ content:"+"; }
+    .inv-panel[aria-expanded="true"] .inv-caret::after{ content:"\2013"; }
+    /* Stock status shown as a traffic-light dot: full=have, ring=low, empty=none. */
+    .inv-dot{ display:inline-block; width:.6rem; height:.6rem; border-radius:50%; margin-right:.5rem;
+              vertical-align:middle; border:1.5px solid var(--muted); background:transparent; flex:0 0 auto; }
+    .inv-dot.have{ background:#5c8a4a; border-color:#5c8a4a; }
+    .inv-dot.low{ background:radial-gradient(circle, #c98a2b 0 42%, transparent 46%); border-color:#c98a2b; }
+    .inv-dot.none{ background:transparent; border-color:#a3372f; }
+    .inv-detail{ border:1px solid var(--line); border-top:none; background:var(--paper);
+                 padding:.5rem .6rem .6rem; }
+    .inv-drow{ display:flex; justify-content:space-between; gap:.8rem; font-family:'Inter',sans-serif;
+               font-size:.72rem; padding:.18rem 0; }
+    .inv-drow .inv-k{ text-transform:uppercase; letter-spacing:.12em; color:var(--muted); }
+    .inv-drow .inv-v{ color:var(--ink); text-align:right; }
+    /* Edit mode: clicking a panel cycles stock status; a best-before calendar drops in on none→full. */
+    .inv-group.editing .inv-caret{ display:none; }
+    .inv-group.editing .inv-panel:hover{ background:var(--paper); }
+    .inv-bb{ border:1px solid var(--line); border-top:none; background:var(--paper); padding:.4rem .6rem .5rem; }
+    .bb-label{ display:flex; align-items:center; gap:.45rem; font-family:'Inter',sans-serif;
+               text-transform:uppercase; letter-spacing:.12em; font-size:.6rem; color:var(--muted); }
+    .bb-label input{ font-family:'Inter',sans-serif; font-size:.72rem; padding:.22rem .3rem;
+                     border:1px solid var(--line); background:var(--paper); color:var(--ink); }
+    /* Add-item box: dashed placeholder shown only in edit mode; firm-lined once typing. */
+    .inv-add{ display:none; }
+    .inv-group.editing .inv-add{ display:block; }
+    .add-box{ width:100%; display:flex; align-items:center; justify-content:center;
+              border:1px dashed var(--bronze); background:transparent; color:var(--bronze);
+              cursor:pointer; font-size:1.15rem; line-height:1.5; padding:.5rem .6rem; }
+    .add-box:hover{ background:rgba(154,123,70,.08); }
+    .add-input{ width:100%; border:1px solid var(--ink); background:var(--paper); color:var(--ink);
+                font-family:'Cormorant Garamond',serif; font-size:1.15rem; line-height:1.5;
+                padding:.5rem .6rem; text-transform:lowercase; }
+    .add-input:focus{ outline:none; border-color:var(--bronze); }
+    /* Add-category box: reserved dashed row at the top of a location, shown only in edit mode. */
+    .inv-addcat{ display:none; margin:.5rem 0 .8rem; }
+    .inv-group.editing .inv-addcat{ display:block; }
+    .addcat-input{ text-align:center; }
+    /* Drag an item between locations: grab cursor, and highlight the location under the pointer. */
+    .inv-item{ cursor:grab; }
+    .inv-item:active{ cursor:grabbing; }
+    body.inv-dragging .inv-group > summary{ cursor:copy; }
+    .inv-group.drop-hot > summary{ background:rgba(154,123,70,.14); outline:1px dashed var(--bronze);
+                                   outline-offset:-2px; }
   </style>
 </head>
 <body>
+  <button id="menuBtn" class="menu-btn" type="button" aria-label="Open menu"
+          aria-haspopup="true" aria-expanded="false" aria-controls="menuPop" onclick="onMenuButton()">
+    <span class="bars"><span></span><span></span><span></span></span>
+  </button>
+  <div id="menuPop" class="menu-pop" role="menu" aria-label="Menu">
+    <button type="button" role="menuitem" onclick="openInventory()">Inventory</button>
+  </div>
+
+  <div id="drawerBackdrop" class="drawer-backdrop" onclick="closeDrawer()" hidden></div>
+  <aside id="inventoryDrawer" class="drawer" role="dialog" aria-modal="true"
+         aria-labelledby="drawerTitle" aria-hidden="true" tabindex="-1">
+    <div class="drawer-head">
+      <h2 id="drawerTitle">Inventory</h2>
+    </div>
+    <div id="drawerBody" class="drawer-body"></div>
+  </aside>
+
   <header class="app-header">
     <p class="kicker">Le Petit Dîner</p>
     <h1>Toddler Dinner Planner</h1>
@@ -330,6 +494,8 @@ function render(d){
     lines.push(`For ${esc(d.for_date)} · to buy: <b>${buy.length?esc(buy.join(', ')):'nothing — all in the fridge'}</b>`);
   } else if(d.source==='cookbook' && (d.missing||[]).length){
     lines.push(`From your cookbook · you're missing: <b>${esc(d.missing.join(', '))}</b>`);
+  } else if(d.source==='fresh' && (d.missing||[]).length){
+    lines.push(`Fresh idea · to buy: <b>${esc(d.missing.join(', '))}</b>`);
   }
   header = lines.map(l=>`<p class="empty">${l}</p>`).join('');
   const btns = isPlan
@@ -348,7 +514,7 @@ function render(d){
 // ---- actions ---------------------------------------------------------------
 async function tonight(){ mode='tonight'; setBusy(true); render(await api('/api/tonight', {})); }
 async function newIdea(){ mode='tonight'; setBusy(true); render(await api('/api/new-idea', {})); }
-async function planTomorrow(){ mode='plan'; setBusy(true); render(await api('/api/plan-tomorrow', {})); }
+async function planTomorrow(){ mode='plan'; setBusy(true); render(await api('/api/plan-tomorrow', {exclude: current ? [current.title] : null})); }
 async function feelingLucky(){ setBusy(true); render(await api('/api/feeling-lucky', {mode, exclude: current ? [current.title] : null})); }
 
 async function save(){
@@ -637,6 +803,415 @@ class StickerLayer {
     this.renderPins();
   }
 }
+
+// ---- hamburger menu + inventory drawer (issue #14) -------------------------
+const LOCATION_LABELS = { fridge:'Fridge', shelf:'Shelf', freezer:'Freezer' };
+const STATUS_LABELS = { have:'In stock', low:'Running low', none:'Out of stock' };
+const STATUS_NEXT = { none:'have', have:'low', low:'none' };   // click cycle: none → full → low → none
+let invIndex = {};                 // lowercased name -> item object (edited in place)
+const invDirty = new Set();        // lowercased names changed since last save
+let invDragName = null;            // item being dragged between locations
+let invDragSourceLoc = null;       // its origin location (to re-expand on a no-op drop)
+let menuOpen = false;
+let drawerOpen = false;
+let lastFocus = null;          // element to restore focus to when the drawer closes
+
+function menuBtnEl(){ return document.getElementById('menuBtn'); }
+
+function openMenu(){
+  menuOpen = true;
+  document.getElementById('menuPop').classList.add('show');
+  menuBtnEl().setAttribute('aria-expanded', 'true');
+}
+function closeMenu(){
+  menuOpen = false;
+  document.getElementById('menuPop').classList.remove('show');
+  menuBtnEl().setAttribute('aria-expanded', 'false');
+}
+function toggleMenu(){ menuOpen ? closeMenu() : openMenu(); }
+
+// The top-right button: acts as an X (close) while the drawer is open, else toggles the menu.
+function onMenuButton(){ drawerOpen ? closeDrawer() : toggleMenu(); }
+
+function openInventory(){
+  closeMenu();
+  openDrawer();
+}
+
+function openDrawer(){
+  if(drawerOpen) return;
+  drawerOpen = true;
+  lastFocus = document.activeElement;
+  const backdrop = document.getElementById('drawerBackdrop');
+  const drawer = document.getElementById('inventoryDrawer');
+  backdrop.hidden = false;
+  document.body.classList.add('drawer-open');
+  drawer.setAttribute('aria-hidden', 'false');
+  menuBtnEl().setAttribute('aria-label', 'Close inventory');
+  drawer.focus();
+  loadInventory();
+}
+
+function closeDrawer(){
+  if(!drawerOpen) return;
+  drawerOpen = false;
+  const backdrop = document.getElementById('drawerBackdrop');
+  const drawer = document.getElementById('inventoryDrawer');
+  document.body.classList.remove('drawer-open');
+  drawer.setAttribute('aria-hidden', 'true');
+  menuBtnEl().setAttribute('aria-label', 'Open menu');
+  // Hide the backdrop from the a11y tree only after the slide-out transition.
+  setTimeout(()=>{ if(!drawerOpen) backdrop.hidden = true; }, 340);
+  if(lastFocus && lastFocus.focus) lastFocus.focus();
+}
+
+async function loadInventory(){
+  const body = document.getElementById('drawerBody');
+  body.innerHTML = '<p class="empty loading">Checking your kitchen…</p>';
+  const d = await api('/api/inventory');
+  if(d.error){ body.innerHTML = `<p class="empty err">Couldn’t load your inventory — ${esc(d.error)}</p>`; return; }
+  const groups = d.groups || [];
+  if(!groups.length){ body.innerHTML = '<p class="empty">Nothing in your fridge yet.</p>'; return; }
+  invIndex = {}; invDirty.clear();
+  for(const g of groups) for(const it of (g.items||[])) invIndex[it.name.toLowerCase()] = it;
+  body.innerHTML = groups.map(g=>{
+    const label = esc(LOCATION_LABELS[g.location] || g.location);
+    return `<details class="inv-group" data-loc="${esc(g.location)}">
+      <summary><span class="inv-loc"><span class="loc-name">${label}</span><span class="loc-cat"></span></span>`
+      + `<button class="loc-edit" type="button" title="Edit ${label}" aria-label="Edit ${label}"`
+      + ` onclick="event.preventDefault();event.stopPropagation();toggleLocationEdit(this)"></button></summary>`
+      + '<div class="inv-addcat"><button class="add-box" type="button" aria-label="Add category"'
+      + ' onclick="startAddCategory(this)">+</button></div>'
+      + `${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
+  }).join('');
+  // Re-sync the pinned "location · category" label to the current scroll position.
+  requestAnimationFrame(updateStickyCats);
+  document.getElementById('inventoryDrawer')
+    .querySelectorAll('.inv-group').forEach(d=>d.addEventListener('toggle', updateStickyCats));
+}
+
+// Subgroup a location's items by category, ordered by category name (uncategorised last).
+function invSubgroups(items){
+  const byCat = new Map();
+  for(const it of items){
+    const key = (it.category && String(it.category).trim()) || '';
+    if(!byCat.has(key)) byCat.set(key, []);
+    byCat.get(key).push(it);
+  }
+  const named = [...byCat.keys()].filter(k=>k).sort((a,b)=>a.localeCompare(b));
+  const keys = byCat.has('') ? [...named, ''] : named;   // uncategorised group last
+  return keys.map(key=>{
+    const rows = byCat.get(key).map(invRow).join('');
+    // Second sticky line: the category name only (uncategorised has no subhead).
+    const head = key ? `<div class="inv-subhead">${esc(key)}</div>` : '';
+    // Trailing dashed add-box (shown only in edit mode) to append a new item to this category.
+    const add = '<li class="inv-add"><button class="add-box" type="button" aria-label="Add item"'
+      + ' onclick="startAddItem(this)">+</button></li>';
+    return `<div class="inv-subgroup" data-cat="${key ? esc(key) : ''}">${head}<ul class="inv-list">${rows}${add}</ul></div>`;
+  }).join('');
+}
+
+// Keep the location bar's fade-in category in sync with the scroll position.
+function updateStickyCats(){
+  const drawer = document.getElementById('inventoryDrawer');
+  if(!drawer) return;
+  drawer.querySelectorAll('.inv-group').forEach(g=>{
+    const slot = g.querySelector('.loc-cat');
+    if(!slot) return;
+    if(!g.open){ setLocCat(slot, ''); return; }
+    const threshold = g.querySelector('summary').getBoundingClientRect().bottom;   // bottom of pinned bar
+    let active = '';
+    g.querySelectorAll('.inv-subgroup').forEach(sub=>{
+      const r = sub.getBoundingClientRect();
+      if(r.top <= threshold + 1 && r.bottom > threshold) active = sub.dataset.cat || '';
+    });
+    setLocCat(slot, active);
+  });
+}
+function setLocCat(slot, cat){
+  if((slot.dataset.cat || '') === cat) return;
+  slot.dataset.cat = cat;
+  if(cat){
+    slot.innerHTML = `<span class="loc-sep" aria-hidden="true"></span><span class="loc-cat-name">${esc(cat)}</span>`;
+    slot.classList.add('show');
+  } else {
+    slot.classList.remove('show'); slot.innerHTML = '';
+  }
+}
+
+function invRow(it){
+  const status = String(it.status || 'have').toLowerCase();
+  const slabel = STATUS_LABELS[status] || status;
+  const dot = `<span class="inv-dot ${esc(status)}" role="img" aria-label="${esc(slabel)}" title="${esc(slabel)}"></span>`;
+  const qty = [it.quantity, it.unit].filter(v=>v!=null && v!=='').join(' ');
+  const rows = [invDetailRow('Status', slabel)];
+  if(qty) rows.push(invDetailRow('Quantity', qty));
+  if(it.best_before) rows.push(invDetailRow('Best before', it.best_before));
+  if(it.opened) rows.push(invDetailRow('Opened', 'Yes'));
+  return `<li class="inv-item" data-name="${esc(it.name)}" draggable="true">
+    <button class="inv-panel" type="button" aria-expanded="false" onclick="onInvPanel(this)">
+      <span class="inv-name">${dot}${esc(it.name)}</span><span class="inv-caret" aria-hidden="true"></span>
+    </button>
+    <div class="inv-detail" hidden>${rows.join('')}</div>
+    <div class="inv-bb" hidden></div>
+  </li>`;
+}
+
+function invDetailRow(k, v){
+  return `<div class="inv-drow"><span class="inv-k">${esc(k)}</span><span class="inv-v">${esc(v)}</span></div>`;
+}
+
+function toggleInvItem(btn){
+  const open = btn.getAttribute('aria-expanded') === 'true';
+  btn.setAttribute('aria-expanded', String(!open));
+  const detail = btn.nextElementSibling;
+  if(detail) detail.hidden = open;
+}
+
+// ---- inventory edit mode (per location) ------------------------------------
+// In view mode a panel click expands detail; in edit mode it cycles the stock status.
+function onInvPanel(btn){
+  const group = btn.closest('.inv-group');
+  if(group && group.classList.contains('editing')) cycleItemStatus(btn.closest('.inv-item'));
+  else toggleInvItem(btn);
+}
+
+function toggleLocationEdit(btn){
+  const group = btn.closest('.inv-group');
+  if(!group.classList.contains('editing')){
+    group.open = true;                       // reveal items to edit
+    group.classList.add('editing');
+    // Collapse any expanded detail so a click cycles status instead.
+    group.querySelectorAll('.inv-panel[aria-expanded="true"]').forEach(toggleInvItem);
+  } else {
+    saveLocationEdits(group, btn);
+  }
+}
+
+function cycleItemStatus(li){
+  const item = invIndex[(li.dataset.name||'').toLowerCase()];
+  if(!item) return;
+  const next = STATUS_NEXT[String(item.status||'have').toLowerCase()] || 'have';
+  item.status = next;
+  invDirty.add(item.name.toLowerCase());
+  const dot = li.querySelector('.inv-dot');
+  const label = STATUS_LABELS[next] || next;
+  dot.className = 'inv-dot ' + next;
+  dot.setAttribute('aria-label', label); dot.title = label;
+  renderItemBB(li, item);                    // none → full reveals the best-before calendar
+}
+
+function renderItemBB(li, item){
+  const bb = li.querySelector('.inv-bb');
+  if(String(item.status).toLowerCase() === 'have'){
+    bb.hidden = false;
+    bb.innerHTML = `<label class="bb-label">Best before <input type="date" value="${item.best_before || ''}"></label>`;
+    bb.querySelector('input').addEventListener('change', (e)=>{
+      item.best_before = e.target.value || null; invDirty.add(item.name.toLowerCase());
+    });
+  } else {
+    bb.hidden = true; bb.innerHTML = '';
+  }
+}
+
+async function saveLocationEdits(group, btn){
+  const items = [];
+  group.querySelectorAll('.inv-item').forEach(li=>{
+    const key = (li.dataset.name||'').toLowerCase();
+    if(invDirty.has(key)) items.push(invIndex[key]);
+  });
+  if(!items.length){ group.classList.remove('editing'); return; }
+  btn.disabled = true;
+  const d = await api('/api/inventory/update', {items});
+  btn.disabled = false;
+  if(d.error){ toast(d.error); return; }
+  items.forEach(it=>invDirty.delete(it.name.toLowerCase()));
+  group.classList.remove('editing');
+  group.querySelectorAll('.inv-bb').forEach(bb=>{ bb.hidden = true; bb.innerHTML=''; });
+  toast(`Updated ${d.updated} item${d.updated===1?'':'s'}`);
+}
+
+// ---- add a new item (edit mode) --------------------------------------------
+function makeAddBox(){
+  const li = document.createElement('li');
+  li.className = 'inv-add';
+  li.innerHTML = '<button class="add-box" type="button" aria-label="Add item"'
+    + ' onclick="startAddItem(this)">+</button>';
+  return li;
+}
+
+// Turn the dashed add-box into a firm-lined name input, and drop a fresh add-box after it.
+function startAddItem(btn){
+  const li = btn.closest('.inv-add');
+  const list = li.parentNode;
+  li.classList.add('adding');
+  li.innerHTML = '<input class="add-input" type="text" maxlength="25" placeholder="New item…">';
+  const input = li.querySelector('input');
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); confirmAddItem(li); }
+    else if(e.key === 'Escape'){ e.stopPropagation(); cancelAddItem(li); }
+  });
+  list.insertBefore(makeAddBox(), li.nextSibling);
+  input.focus();
+}
+
+function cancelAddItem(li){ li.remove(); }
+
+// Enter confirms the name → create the item (status full) and pop its best-before calendar.
+function confirmAddItem(li){
+  const name = li.querySelector('input').value.trim().toLowerCase().slice(0, 25);
+  if(!name){ cancelAddItem(li); return; }
+  if(invIndex[name.toLowerCase()]){ toast(`“${name}” is already in your inventory`); return; }
+  const sub = li.closest('.inv-subgroup');
+  const item = {
+    name,
+    status: 'have',
+    quantity: null, unit: null, best_before: null,
+    category: sub && sub.dataset.cat ? sub.dataset.cat : null,
+    opened: false,
+    location: li.closest('.inv-group').dataset.loc || 'fridge',
+  };
+  invIndex[name.toLowerCase()] = item;
+  invDirty.add(name.toLowerCase());
+  const t = document.createElement('template');
+  t.innerHTML = invRow(item).trim();
+  const row = t.content.firstElementChild;
+  li.parentNode.replaceChild(row, li);
+  renderItemBB(row, item);                    // full item → best-before calendar pops out
+  const date = row.querySelector('.inv-bb input');
+  if(date) date.focus();
+}
+
+// ---- add a new category (edit mode) ----------------------------------------
+function resetAddCat(box){
+  box.classList.remove('adding');
+  box.innerHTML = '<button class="add-box" type="button" aria-label="Add category"'
+    + ' onclick="startAddCategory(this)">+</button>';
+}
+
+function makeSubgroup(cat){
+  const div = document.createElement('div');
+  div.className = 'inv-subgroup'; div.dataset.cat = cat;
+  div.innerHTML = `<div class="inv-subhead">${esc(cat)}</div><ul class="inv-list"></ul>`;
+  div.querySelector('.inv-list').appendChild(makeAddBox());
+  return div;
+}
+
+// The top add-category box becomes a centred input; Enter creates the category subgroup.
+function startAddCategory(btn){
+  const box = btn.closest('.inv-addcat');
+  box.classList.add('adding');
+  box.innerHTML = '<input class="add-input addcat-input" type="text" maxlength="25" placeholder="New category…">';
+  const input = box.querySelector('input');
+  input.addEventListener('keydown', (e)=>{
+    if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); confirmAddCategory(box); }
+    else if(e.key === 'Escape'){ e.stopPropagation(); resetAddCat(box); }
+  });
+  input.focus();
+}
+
+function confirmAddCategory(box){
+  const cat = box.querySelector('input').value.trim().toLowerCase().slice(0, 25);
+  if(!cat){ resetAddCat(box); return; }
+  const group = box.closest('.inv-group');
+  const exists = [...group.querySelectorAll('.inv-subgroup')]
+    .some(s => (s.dataset.cat || '').toLowerCase() === cat.toLowerCase());
+  if(exists){ toast(`“${cat}” already exists here`); return; }
+  const sub = makeSubgroup(cat);
+  box.parentNode.insertBefore(sub, box.nextSibling);   // new category sits atop existing ones
+  resetAddCat(box);                                    // keep the add-category box at the top
+}
+
+// ---- drag an item between locations ----------------------------------------
+function onInvDragStart(e){
+  const li = e.target.closest('.inv-item');
+  if(!li || !li.dataset.name){ return; }
+  if(li.closest('.inv-group').classList.contains('editing')){ e.preventDefault(); return; }
+  invDragName = li.dataset.name.toLowerCase();
+  invDragSourceLoc = li.closest('.inv-group').dataset.loc;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', invDragName);
+  document.body.classList.add('inv-dragging');
+  // Fold every location so all headers show as drop targets (deferred so the drag image is
+  // captured from the still-visible card first).
+  setTimeout(()=>document.querySelectorAll('#inventoryDrawer .inv-group').forEach(g=>g.open = false), 0);
+}
+
+function onInvDragOver(e){
+  if(!invDragName) return;
+  const g = e.target.closest('.inv-group');
+  if(!g) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('#inventoryDrawer .inv-group.drop-hot')
+    .forEach(x=>{ if(x!==g) x.classList.remove('drop-hot'); });
+  g.classList.add('drop-hot');
+}
+
+function onInvDrop(e){
+  const g = e.target.closest('.inv-group');
+  if(!g || !invDragName) return;
+  e.preventDefault();
+  g.classList.remove('drop-hot');
+  const item = invIndex[invDragName];
+  const targetLoc = g.dataset.loc;
+  invDragName = null;
+  if(!item) return;
+  if(String(item.location) === targetLoc){ g.open = true; return; }   // same place → just re-open
+  moveInvItem(item, targetLoc);
+}
+
+function onInvDragEnd(){
+  document.body.classList.remove('inv-dragging');
+  document.querySelectorAll('#inventoryDrawer .inv-group.drop-hot').forEach(x=>x.classList.remove('drop-hot'));
+  // Dropped nowhere: re-open the source location so the list isn't left all-folded.
+  if(invDragName){
+    const src = document.querySelector(`#inventoryDrawer .inv-group[data-loc="${invDragSourceLoc}"]`);
+    if(src) src.open = true;
+    invDragName = null;
+  }
+}
+
+async function moveInvItem(item, targetLoc){
+  const prev = String(item.location);
+  item.location = targetLoc;
+  const d = await api('/api/inventory/update', {items:[item]});
+  if(d.error){ item.location = prev; toast(d.error); return; }
+  toast(`Moved “${item.name}” to ${LOCATION_LABELS[targetLoc] || targetLoc}`);
+  await loadInventory();
+  const g = document.querySelector(`#inventoryDrawer .inv-group[data-loc="${targetLoc}"]`);
+  if(g){ g.open = true; requestAnimationFrame(updateStickyCats); }
+}
+
+// Esc closes the drawer (or the menu); a11y requirement.
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Escape') return;
+  if(drawerOpen) closeDrawer();
+  else if(menuOpen) closeMenu();
+});
+// Click outside the menu (but not on the drawer/button) closes the open menu.
+document.addEventListener('pointerdown', (e)=>{
+  if(!menuOpen) return;
+  if(e.target.closest('#menuPop') || e.target.closest('#menuBtn')) return;
+  closeMenu();
+});
+// Keep focus inside the drawer while it's open (simple focus trap).
+document.addEventListener('focusin', (e)=>{
+  if(!drawerOpen) return;
+  const drawer = document.getElementById('inventoryDrawer');
+  if(drawer.contains(e.target) || e.target === menuBtnEl()) return;
+  drawer.focus();
+});
+// Sync the fade-in category label as the drawer scrolls.
+document.getElementById('inventoryDrawer').addEventListener('scroll', updateStickyCats, {passive:true});
+// Drag items between locations (delegated; the drawer body's element is stable across renders).
+(function(){
+  const db = document.getElementById('drawerBody');
+  db.addEventListener('dragstart', onInvDragStart);
+  db.addEventListener('dragover', onInvDragOver);
+  db.addEventListener('drop', onInvDrop);
+  db.addEventListener('dragend', onInvDragEnd);
+})();
 
 loadHistory();
 </script>

@@ -12,7 +12,7 @@ from fastapi.testclient import TestClient
 import toddler_dinner.web.server as server
 from toddler_dinner.config import ChildProfile, Exclusions, HouseholdProfile, Profile, Sex
 from toddler_dinner.core import Planner
-from toddler_dinner.models import FoodGroup, Ingredient, InventoryItem, NutritionFacts, Recipe
+from toddler_dinner.models import FoodGroup, Ingredient, InventoryItem, NutritionFacts, Recipe, StockStatus
 from toddler_dinner.persistence import InMemoryRecipeRepository
 
 
@@ -182,3 +182,98 @@ def test_chat_change_to_recipe_with_ingredients_reaches_llm_unanchored():
     # the parent's own words reached the model, and it was NOT anchored to the fish card
     assert "stewed beef and pasta" in captured["prompt"]
     assert "Steamed Fish" not in captured["prompt"]
+
+
+# --- issue #14: read-only inventory endpoint ---------------------------------
+
+class _MultiLocInv:
+    """Inventory spanning all three locations (out of source order) with rich fields."""
+
+    def list_items(self):
+        from datetime import date as _d
+        from toddler_dinner.models import StorageLocation
+        return [
+            InventoryItem(name="peas", quantity=500, unit="g", location=StorageLocation.FREEZER),
+            InventoryItem(name="milk", quantity=1, unit="L", opened=True,
+                          best_before=_d(2026, 9, 1), category="dairy",
+                          location=StorageLocation.FRIDGE),
+            InventoryItem(name="rice", quantity=2, unit="kg", location=StorageLocation.SHELF),
+        ]
+
+
+def _inv_planner(inv) -> Planner:
+    profile = Profile(
+        child=ChildProfile(name="Mia", birthdate=date(2024, 1, 15), sex=Sex.FEMALE, weight_kg=11.5),
+        household=HouseholdProfile(), exclusions=Exclusions(), variety_days=5,
+    )
+    return Planner(profile=profile, inventory=inv, recipes=InMemoryRecipeRepository(), llm=_LLM())
+
+
+def test_inventory_grouped_in_location_order():
+    d = _client(_inv_planner(_MultiLocInv())).get("/api/inventory").json()
+    assert [g["location"] for g in d["groups"]] == ["fridge", "shelf", "freezer"]
+    fridge = d["groups"][0]["items"][0]
+    assert fridge["name"] == "milk"
+    assert fridge["opened"] is True
+    assert fridge["best_before"] == "2026-09-01"
+    assert fridge["category"] == "dairy"
+
+
+def test_inventory_omits_empty_locations():
+    class _FridgeOnly:
+        def list_items(self):
+            return [InventoryItem(name="chicken", quantity=1, unit="ea")]
+
+    d = _client(_inv_planner(_FridgeOnly())).get("/api/inventory").json()
+    assert [g["location"] for g in d["groups"]] == ["fridge"]
+
+
+def test_inventory_empty():
+    class _Empty:
+        def list_items(self):
+            return []
+
+    d = _client(_inv_planner(_Empty())).get("/api/inventory").json()
+    assert d["groups"] == []
+
+
+def test_inventory_errors_caught_not_500():
+    class _Boom:
+        def list_items(self):
+            raise RuntimeError("db down")
+
+    resp = _client(_inv_planner(_Boom())).get("/api/inventory")
+    assert resp.status_code == 200
+    assert "error" in resp.json()
+
+
+def test_inventory_update_persists():
+    class _Writable:
+        def __init__(self):
+            self.saved = None
+
+        def list_items(self):
+            return [InventoryItem(name="milk", status=StockStatus.NONE)]
+
+        def upsert_many(self, items):
+            self.saved = items
+            return len(items)
+
+    inv = _Writable()
+    payload = {"items": [{"name": "milk", "status": "have", "location": "fridge",
+                          "best_before": "2026-09-01"}]}
+    d = _client(_inv_planner(inv)).post("/api/inventory/update", json=payload).json()
+    assert d["ok"] is True and d["updated"] == 1
+    assert inv.saved[0].name == "milk"
+    assert inv.saved[0].status == StockStatus.HAVE
+    assert str(inv.saved[0].best_before) == "2026-09-01"
+
+
+def test_inventory_update_readonly_returns_error():
+    class _ReadOnly:
+        def list_items(self):
+            return []
+
+    d = _client(_inv_planner(_ReadOnly())).post("/api/inventory/update",
+                                                json={"items": []}).json()
+    assert "error" in d
