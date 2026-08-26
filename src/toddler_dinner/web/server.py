@@ -142,12 +142,13 @@ def api_feeling_lucky(body: FeelingLuckyBody, planner: Planner = Depends(get_pla
 
 @app.post("/api/plan-tomorrow")
 def api_plan(body: DrawBody | None = None, planner: Planner = Depends(get_planner)) -> dict:
-    """Draw tomorrow's dinner from the cookbook (fridge-aware random, variety from tomorrow)."""
+    """Draw tomorrow's dinner from the whole cookbook (planning implies shopping), then list
+    the groceries needed. Not fridge-limited, so saved recipes that need shopping can surface."""
     try:
         exclude = body.exclude if body else None
         for_date = planner.today() + timedelta(days=1)
         draw = planner.draw_from_cookbook(
-            for_date=for_date, fridge_aware=True, exclude_titles=exclude
+            for_date=for_date, fridge_aware=False, exclude_titles=exclude
         )
         if draw.recipe is None:
             return {"message": _EMPTY_COOKBOOK_MSG}
