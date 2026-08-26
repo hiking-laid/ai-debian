@@ -80,7 +80,7 @@
     .chatrow input:focus{ outline:none; border-color:var(--bronze); }
     .chatrow button{ font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.13em; font-size:.64rem; padding:.55rem 1.1rem; border:1px solid var(--ink); background:transparent; cursor:pointer; }
 
-    #toast{ position:fixed; bottom:1.6rem; left:50%; transform:translateX(-50%); background:var(--ink); color:var(--cream); padding:.75rem 1.3rem; font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; opacity:0; transition:opacity .2s; pointer-events:none; }
+    #toast{ position:fixed; bottom:1.6rem; left:50%; transform:translateX(-50%); z-index:60; background:var(--ink); color:var(--cream); padding:.75rem 1.3rem; font-size:.66rem; text-transform:uppercase; letter-spacing:.14em; opacity:0; transition:opacity .2s; pointer-events:none; }
     #toast.show{ opacity:.97; }
     .empty{ font-family:'Cormorant Garamond',serif; font-style:italic; color:var(--muted); font-size:1.1rem; }
     .empty.err{ color:#a3372f; }
