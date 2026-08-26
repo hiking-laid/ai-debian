@@ -1026,9 +1026,12 @@ async function saveLocationEdits(group, btn){
   btn.disabled = false;
   if(d.error){ toast(d.error); return; }
   items.forEach(it=>invDirty.delete(it.name.toLowerCase()));
-  group.classList.remove('editing');
-  group.querySelectorAll('.inv-bb').forEach(bb=>{ bb.hidden = true; bb.innerHTML=''; });
+  const loc = group.dataset.loc;
   toast(`Updated ${d.updated} item${d.updated===1?'':'s'}`);
+  // Reload so new items land in the right subgroup and best-before dates render canonically.
+  await loadInventory();
+  const g = document.querySelector(`#inventoryDrawer .inv-group[data-loc="${loc}"]`);
+  if(g){ g.open = true; requestAnimationFrame(updateStickyCats); }
 }
 
 // ---- add a new item (edit mode) --------------------------------------------
