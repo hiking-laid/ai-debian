@@ -455,6 +455,8 @@ function render(d){
     lines.push(`For ${esc(d.for_date)} · to buy: <b>${buy.length?esc(buy.join(', ')):'nothing — all in the fridge'}</b>`);
   } else if(d.source==='cookbook' && (d.missing||[]).length){
     lines.push(`From your cookbook · you're missing: <b>${esc(d.missing.join(', '))}</b>`);
+  } else if(d.source==='fresh' && (d.missing||[]).length){
+    lines.push(`Fresh idea · to buy: <b>${esc(d.missing.join(', '))}</b>`);
   }
   header = lines.map(l=>`<p class="empty">${l}</p>`).join('');
   const btns = isPlan

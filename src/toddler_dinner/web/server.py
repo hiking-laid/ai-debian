@@ -12,7 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from toddler_dinner.app import build_planner
-from toddler_dinner.core import Planner
+from toddler_dinner.core import Planner, missing_ingredients
 from toddler_dinner.models import STICKER_SECTIONS, Recipe
 from toddler_dinner.routing import Action, route
 
@@ -111,9 +111,11 @@ def api_tonight(body: DrawBody | None = None, planner: Planner = Depends(get_pla
 
 @app.post("/api/new-idea")
 def api_new_idea(planner: Planner = Depends(get_planner)) -> dict:
-    """Generate a brand-new recipe via the LLM (unsaved suggestion)."""
+    """Generate a brand-new recipe via the LLM (unsaved suggestion) + what you'd need to buy."""
     try:
-        return {"recipe": planner.another_idea(), "source": "fresh"}
+        recipe = planner.another_idea()
+        missing = [i.name for i in missing_ingredients(recipe, planner.inventory.list_items())]
+        return {"recipe": recipe, "source": "fresh", "missing": missing}
     except Exception as e:  # noqa: BLE001
         return {"error": str(e)}
 
