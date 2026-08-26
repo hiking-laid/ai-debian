@@ -170,8 +170,10 @@
     /* Hamburger: three lines that morph into an X when the drawer opens. */
     .menu-btn{ position:fixed; top:1.1rem; right:1.1rem; z-index:43; width:44px; height:44px;
                border:1px solid var(--line); background:var(--paper); cursor:pointer; padding:0;
-               display:flex; align-items:center; justify-content:center; }
+               display:flex; align-items:center; justify-content:center; transition:width .25s ease; }
     .menu-btn:hover{ border-color:var(--ink); }
+    /* When the menu is open, widen the button to align with the dropdown below it. */
+    .menu-btn[aria-expanded="true"]{ width:180px; }
     .menu-btn .bars{ position:relative; width:20px; height:14px; }
     .menu-btn .bars span{ position:absolute; left:0; width:100%; height:2px; background:var(--ink);
                           border-radius:1px; transition:transform .3s ease, opacity .2s ease, top .3s ease; }
