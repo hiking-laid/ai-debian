@@ -306,6 +306,12 @@
     .inv-addcat{ display:none; margin:.5rem 0 .8rem; }
     .inv-group.editing .inv-addcat{ display:block; }
     .addcat-input{ text-align:center; }
+    /* Drag an item between locations: grab cursor, and highlight the location under the pointer. */
+    .inv-item{ cursor:grab; }
+    .inv-item:active{ cursor:grabbing; }
+    body.inv-dragging .inv-group > summary{ cursor:copy; }
+    .inv-group.drop-hot > summary{ background:rgba(154,123,70,.14); outline:1px dashed var(--bronze);
+                                   outline-offset:-2px; }
   </style>
 </head>
 <body>
@@ -804,6 +810,8 @@ const STATUS_LABELS = { have:'In stock', low:'Running low', none:'Out of stock' 
 const STATUS_NEXT = { none:'have', have:'low', low:'none' };   // click cycle: none → full → low → none
 let invIndex = {};                 // lowercased name -> item object (edited in place)
 const invDirty = new Set();        // lowercased names changed since last save
+let invDragName = null;            // item being dragged between locations
+let invDragSourceLoc = null;       // its origin location (to re-expand on a no-op drop)
 let menuOpen = false;
 let drawerOpen = false;
 let lastFocus = null;          // element to restore focus to when the drawer closes
@@ -940,7 +948,7 @@ function invRow(it){
   if(qty) rows.push(invDetailRow('Quantity', qty));
   if(it.best_before) rows.push(invDetailRow('Best before', it.best_before));
   if(it.opened) rows.push(invDetailRow('Opened', 'Yes'));
-  return `<li class="inv-item" data-name="${esc(it.name)}">
+  return `<li class="inv-item" data-name="${esc(it.name)}" draggable="true">
     <button class="inv-panel" type="button" aria-expanded="false" onclick="onInvPanel(this)">
       <span class="inv-name">${dot}${esc(it.name)}</span><span class="inv-caret" aria-hidden="true"></span>
     </button>
@@ -1114,6 +1122,67 @@ function confirmAddCategory(box){
   resetAddCat(box);                                    // keep the add-category box at the top
 }
 
+// ---- drag an item between locations ----------------------------------------
+function onInvDragStart(e){
+  const li = e.target.closest('.inv-item');
+  if(!li || !li.dataset.name){ return; }
+  if(li.closest('.inv-group').classList.contains('editing')){ e.preventDefault(); return; }
+  invDragName = li.dataset.name.toLowerCase();
+  invDragSourceLoc = li.closest('.inv-group').dataset.loc;
+  e.dataTransfer.effectAllowed = 'move';
+  e.dataTransfer.setData('text/plain', invDragName);
+  document.body.classList.add('inv-dragging');
+  // Fold every location so all headers show as drop targets (deferred so the drag image is
+  // captured from the still-visible card first).
+  setTimeout(()=>document.querySelectorAll('#inventoryDrawer .inv-group').forEach(g=>g.open = false), 0);
+}
+
+function onInvDragOver(e){
+  if(!invDragName) return;
+  const g = e.target.closest('.inv-group');
+  if(!g) return;
+  e.preventDefault();
+  e.dataTransfer.dropEffect = 'move';
+  document.querySelectorAll('#inventoryDrawer .inv-group.drop-hot')
+    .forEach(x=>{ if(x!==g) x.classList.remove('drop-hot'); });
+  g.classList.add('drop-hot');
+}
+
+function onInvDrop(e){
+  const g = e.target.closest('.inv-group');
+  if(!g || !invDragName) return;
+  e.preventDefault();
+  g.classList.remove('drop-hot');
+  const item = invIndex[invDragName];
+  const targetLoc = g.dataset.loc;
+  invDragName = null;
+  if(!item) return;
+  if(String(item.location) === targetLoc){ g.open = true; return; }   // same place → just re-open
+  moveInvItem(item, targetLoc);
+}
+
+function onInvDragEnd(){
+  document.body.classList.remove('inv-dragging');
+  document.querySelectorAll('#inventoryDrawer .inv-group.drop-hot').forEach(x=>x.classList.remove('drop-hot'));
+  // Dropped nowhere: re-open the source location so the list isn't left all-folded.
+  if(invDragName){
+    const src = document.querySelector(`#inventoryDrawer .inv-group[data-loc="${invDragSourceLoc}"]`);
+    if(src) src.open = true;
+    invDragName = null;
+  }
+}
+
+async function moveInvItem(item, targetLoc){
+  const prev = String(item.location);
+  item.location = targetLoc;
+  const d = await api('/api/inventory/update', {items:[item]});
+  if(d.error){ item.location = prev; toast(d.error); return; }
+  toast(`Moved “${item.name}” to ${LOCATION_LABELS[targetLoc] || targetLoc}`);
+  await loadInventory();
+  const g = document.querySelector(`#inventoryDrawer .inv-group[data-loc="${targetLoc}"]`);
+  if(g){ g.open = true; requestAnimationFrame(updateStickyCats); }
+}
+
 // Esc closes the drawer (or the menu); a11y requirement.
 document.addEventListener('keydown', (e)=>{
   if(e.key !== 'Escape') return;
@@ -1135,6 +1204,14 @@ document.addEventListener('focusin', (e)=>{
 });
 // Sync the fade-in category label as the drawer scrolls.
 document.getElementById('inventoryDrawer').addEventListener('scroll', updateStickyCats, {passive:true});
+// Drag items between locations (delegated; the drawer body's element is stable across renders).
+(function(){
+  const db = document.getElementById('drawerBody');
+  db.addEventListener('dragstart', onInvDragStart);
+  db.addEventListener('dragover', onInvDragOver);
+  db.addEventListener('drop', onInvDrop);
+  db.addEventListener('dragend', onInvDragEnd);
+})();
 
 loadHistory();
 </script>
