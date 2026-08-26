@@ -294,12 +294,13 @@
     /* Add-item box: dashed placeholder shown only in edit mode; firm-lined once typing. */
     .inv-add{ display:none; }
     .inv-group.editing .inv-add{ display:block; }
-    .add-box{ width:100%; min-height:2.2rem; display:flex; align-items:center; justify-content:center;
+    .add-box{ width:100%; display:flex; align-items:center; justify-content:center;
               border:1px dashed var(--bronze); background:transparent; color:var(--bronze);
-              cursor:pointer; font-size:1.2rem; line-height:1; padding:.45rem; }
+              cursor:pointer; font-size:1.15rem; line-height:1.5; padding:.5rem .6rem; }
     .add-box:hover{ background:rgba(154,123,70,.08); }
     .add-input{ width:100%; border:1px solid var(--ink); background:var(--paper); color:var(--ink);
-                font-family:'Cormorant Garamond',serif; font-size:1.1rem; padding:.42rem .5rem; }
+                font-family:'Cormorant Garamond',serif; font-size:1.1rem; padding:.42rem .5rem;
+                text-transform:lowercase; }
     .add-input:focus{ outline:none; border-color:var(--bronze); }
     /* Add-category box: reserved dashed row at the top of a location, shown only in edit mode. */
     .inv-addcat{ display:none; margin:.5rem 0 .8rem; }
@@ -872,7 +873,7 @@ async function loadInventory(){
       + `<button class="loc-edit" type="button" title="Edit ${label}" aria-label="Edit ${label}"`
       + ` onclick="event.preventDefault();event.stopPropagation();toggleLocationEdit(this)"></button></summary>`
       + '<div class="inv-addcat"><button class="add-box" type="button" aria-label="Add category"'
-      + ' onclick="startAddCategory(this)">+ New category</button></div>'
+      + ' onclick="startAddCategory(this)">+</button></div>'
       + `${invSubgroups(g.items||[])}</details>`;   // folded by default (no 'open' attribute)
   }).join('');
   // Re-sync the pinned "location · category" label to the current scroll position.
@@ -1039,8 +1040,8 @@ function startAddItem(btn){
   li.innerHTML = '<input class="add-input" type="text" maxlength="25" placeholder="New item…">';
   const input = li.querySelector('input');
   input.addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter'){ e.preventDefault(); confirmAddItem(li); }
-    else if(e.key === 'Escape'){ cancelAddItem(li); }
+    if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); confirmAddItem(li); }
+    else if(e.key === 'Escape'){ e.stopPropagation(); cancelAddItem(li); }
   });
   list.insertBefore(makeAddBox(), li.nextSibling);
   input.focus();
@@ -1050,7 +1051,7 @@ function cancelAddItem(li){ li.remove(); }
 
 // Enter confirms the name → create the item (status full) and pop its best-before calendar.
 function confirmAddItem(li){
-  const name = li.querySelector('input').value.trim().slice(0, 25);
+  const name = li.querySelector('input').value.trim().toLowerCase().slice(0, 25);
   if(!name){ cancelAddItem(li); return; }
   if(invIndex[name.toLowerCase()]){ toast(`“${name}” is already in your inventory`); return; }
   const sub = li.closest('.inv-subgroup');
@@ -1077,7 +1078,7 @@ function confirmAddItem(li){
 function resetAddCat(box){
   box.classList.remove('adding');
   box.innerHTML = '<button class="add-box" type="button" aria-label="Add category"'
-    + ' onclick="startAddCategory(this)">+ New category</button>';
+    + ' onclick="startAddCategory(this)">+</button>';
 }
 
 function makeSubgroup(cat){
@@ -1095,14 +1096,14 @@ function startAddCategory(btn){
   box.innerHTML = '<input class="add-input addcat-input" type="text" maxlength="25" placeholder="New category…">';
   const input = box.querySelector('input');
   input.addEventListener('keydown', (e)=>{
-    if(e.key === 'Enter'){ e.preventDefault(); confirmAddCategory(box); }
-    else if(e.key === 'Escape'){ resetAddCat(box); }
+    if(e.key === 'Enter'){ e.preventDefault(); e.stopPropagation(); confirmAddCategory(box); }
+    else if(e.key === 'Escape'){ e.stopPropagation(); resetAddCat(box); }
   });
   input.focus();
 }
 
 function confirmAddCategory(box){
-  const cat = box.querySelector('input').value.trim().slice(0, 25);
+  const cat = box.querySelector('input').value.trim().toLowerCase().slice(0, 25);
   if(!cat){ resetAddCat(box); return; }
   const group = box.closest('.inv-group');
   const exists = [...group.querySelectorAll('.inv-subgroup')]
