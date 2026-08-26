@@ -223,7 +223,9 @@
     .inv-group > summary{ list-style:none; cursor:pointer; display:flex; align-items:center;
                           justify-content:space-between; gap:.8rem; padding:.9rem 0;
                           font-family:'Inter',sans-serif; text-transform:uppercase; letter-spacing:.22em;
-                          font-size:.66rem; color:var(--bronze); }
+                          font-size:.66rem; color:var(--bronze);
+                          position:sticky; top:0; z-index:2; background:var(--paper);
+                          border-bottom:1px solid var(--line); }
     .inv-group > summary::-webkit-details-marker{ display:none; }
     .inv-group > summary::after{ content:"+"; font-size:1rem; letter-spacing:0; color:var(--muted); }
     .inv-group[open] > summary::after{ content:"\2013"; }   /* en dash when expanded */
@@ -232,7 +234,7 @@
     .inv-subgroup{ margin:.2rem 0 1rem; }
     .inv-subgroup:last-child{ margin-bottom:.4rem; }
     .inv-subhead{ font-family:'Cormorant Garamond',serif; font-style:italic; color:var(--muted);
-                  font-size:1rem; margin:.5rem 0 .1rem; }
+                  font-size:1rem; margin:.5rem 0 .1rem; text-transform:capitalize; text-align:center; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0; }
     .inv-list{ list-style:none; margin:.4rem 0 0; padding:0;
                display:grid; grid-template-columns:1fr 1fr; gap:.5rem .7rem; align-items:start; }
