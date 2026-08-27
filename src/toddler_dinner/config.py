@@ -60,9 +60,9 @@ class Secrets(BaseSettings):
 
     postgres_dsn: str = "postgresql+psycopg://localhost/toddler_dinner"
     # LLM provider selection + credentials.
-    llm_provider: str = "copilot"  # copilot | openai | azure | anthropic
+    llm_provider: str = "copilot"  # copilot | openai | azure | anthropic | gemini
     llm_model: str = "gpt-4o"
-    llm_api_key: str | None = None       # OpenAI / Azure / Anthropic API key
+    llm_api_key: str | None = None       # OpenAI / Azure / Anthropic / Gemini API key
     # Advanced/optional:
     llm_endpoint: str | None = None      # endpoint override (rarely needed)
     copilot_token: str | None = None     # pre-obtained Copilot token (else device-flow cache)

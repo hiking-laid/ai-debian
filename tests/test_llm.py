@@ -12,6 +12,7 @@ from toddler_dinner.providers.llm.anthropic import AnthropicLLMProvider
 from toddler_dinner.providers.llm.azure import AzureOpenAIProvider, AzureResponsesProvider
 from toddler_dinner.providers.llm.base import OpenAICompatibleProvider, extract_json
 from toddler_dinner.providers.llm.copilot import CopilotLLMProvider
+from toddler_dinner.providers.llm.gemini import GeminiLLMProvider
 from toddler_dinner.providers.llm.openai import OpenAILLMProvider
 
 
@@ -139,6 +140,32 @@ def test_anthropic_uses_messages_shape():
     assert sent["headers"]["x-api-key"] == "ak"
 
 
+# --- Gemini -----------------------------------------------------------------
+
+def _gemini_reply(text: str) -> dict:
+    return {"candidates": [{"content": {"role": "model", "parts": [{"text": text}]}}]}
+
+
+def test_gemini_uses_generatecontent_shape():
+    client = FakeClient([_gemini_reply("hey")])
+    p = GeminiLLMProvider(api_key="gk", model="gemini-1.5-flash", client=client)
+    assert p.complete("sys", "usr") == "hey"
+    sent = client.posts[0]
+    assert sent["url"].endswith("/models/gemini-1.5-flash:generateContent")
+    assert sent["json"]["system_instruction"]["parts"][0]["text"] == "sys"
+    assert sent["json"]["contents"][0] == {"role": "user", "parts": [{"text": "usr"}]}
+    assert sent["headers"]["x-goog-api-key"] == "gk"
+    assert "Authorization" not in sent["headers"]      # key goes in the Google header
+
+
+def test_gemini_generate_recipe_parses_model_json():
+    client = FakeClient([_gemini_reply(RECIPE_JSON)])
+    p = GeminiLLMProvider(api_key="gk", model="gemini-1.5-flash", client=client)
+    recipe = p.generate_recipe("make dinner")
+    assert recipe.title == "salmon rice"
+    assert recipe.ingredients[0].name == "salmon"
+
+
 # --- factory ----------------------------------------------------------------
 
 def test_factory_selects_provider():
@@ -153,6 +180,10 @@ def test_factory_selects_provider():
     assert isinstance(
         build_llm_provider(Secrets(llm_provider="anthropic", llm_api_key="k")),
         AnthropicLLMProvider,
+    )
+    assert isinstance(
+        build_llm_provider(Secrets(llm_provider="gemini", llm_api_key="k")),
+        GeminiLLMProvider,
     )
     assert isinstance(
         build_llm_provider(Secrets(

@@ -8,6 +8,7 @@ from toddler_dinner.providers.llm.anthropic import AnthropicLLMProvider
 from toddler_dinner.providers.llm.azure import AzureOpenAIProvider, AzureResponsesProvider
 from toddler_dinner.providers.llm.base import OpenAICompatibleProvider
 from toddler_dinner.providers.llm.copilot import CopilotLLMProvider
+from toddler_dinner.providers.llm.gemini import GeminiLLMProvider
 from toddler_dinner.providers.llm.openai import OpenAILLMProvider
 
 __all__ = [
@@ -15,6 +16,7 @@ __all__ = [
     "AzureOpenAIProvider",
     "AzureResponsesProvider",
     "CopilotLLMProvider",
+    "GeminiLLMProvider",
     "OpenAICompatibleProvider",
     "OpenAILLMProvider",
     "build_llm_provider",
@@ -62,6 +64,14 @@ def build_llm_provider(secrets: Secrets) -> LLMProvider:
         if not secrets.llm_api_key:
             raise RuntimeError("anthropic provider requires TDP_LLM_API_KEY")
         return AnthropicLLMProvider(
+            api_key=secrets.llm_api_key,
+            model=secrets.llm_model,
+            endpoint=secrets.llm_endpoint,
+        )
+    if provider == "gemini":
+        if not secrets.llm_api_key:
+            raise RuntimeError("gemini provider requires TDP_LLM_API_KEY")
+        return GeminiLLMProvider(
             api_key=secrets.llm_api_key,
             model=secrets.llm_model,
             endpoint=secrets.llm_endpoint,

@@ -28,8 +28,8 @@ so edit them on the host without rebuilding. Postgres is external (e.g. your NAS
 > - **GitHub Copilot** — authorize once via device flow; the `copilot-auth` volume starts empty,
 >   so run it in the container to write the token there:
 >   `docker compose run --rm app toddler-dinner login-copilot`
-> - **OpenAI / Anthropic** — set `TDP_LLM_PROVIDER=openai` (or `anthropic`) and `TDP_LLM_API_KEY`
->   in `.env`. No extra step.
+> - **OpenAI / Anthropic / Gemini** — set `TDP_LLM_PROVIDER=openai` (or `anthropic`, `gemini`) and
+>   `TDP_LLM_API_KEY` in `.env` (plus `TDP_LLM_MODEL`, e.g. `gemini-1.5-flash`). No extra step.
 
 ## Local development
 
